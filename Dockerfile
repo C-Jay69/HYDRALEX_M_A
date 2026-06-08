@@ -8,7 +8,7 @@ COPY package.json bun.lock turbo.json ./
 COPY packages/web/package.json ./packages/web/
 
 # Install all deps (including devDeps needed for build)
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # Copy source
 COPY packages/web/ ./packages/web/
