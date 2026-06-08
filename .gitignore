@@ -13,3 +13,5 @@ venv/
 packages/mobile/.expo/
 packages/desktop/dist/
 packages/desktop/dist-electron/
+.turbo/cache/
+*.db
