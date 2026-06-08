@@ -2,13 +2,16 @@
 # Test suite for MergerRiskAnalyzer
 
 import unittest
+from pathlib import Path
 from merger_risk_analyzer import MergerRiskAnalyzer, AnalysisResult
 
+_ENGINE_DIR = Path(__file__).parent
+
 class TestMergerRiskAnalyzer(unittest.TestCase):
-    
+
     @classmethod
     def setUpClass(cls):
-        cls.analyzer = MergerRiskAnalyzer("merger_scoring_config.yaml")
+        cls.analyzer = MergerRiskAnalyzer(str(_ENGINE_DIR / "merger_scoring_config.yaml"))
     
     # ============================================================
     # TEST CASE 1: Skeleton/Tier 1 Draft (like your sample)

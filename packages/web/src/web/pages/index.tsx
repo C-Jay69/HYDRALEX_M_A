@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { api } from "../lib/api";
-import { formatDate, getRiskColor, getRiskBg, getRiskBorder } from "../lib/utils";
+import { formatDate, getRiskColor } from "../lib/utils";
 import ScoreBadge from "../components/ScoreBadge";
 import { authClient } from "../lib/auth";
 import { useCustomer } from "autumn-js/react";
@@ -450,13 +450,7 @@ export default function DashboardPage() {
                       ? "1px solid var(--border)"
                       : "none",
                   alignItems: "center",
-                  cursor: a.status === "complete" ? "pointer" : "default",
                   transition: "background 0.15s",
-                }}
-                onClick={() => {
-                  if (a.status === "complete") {
-                    window.location.href = `/reports/${a.id}`;
-                  }
                 }}
                 onMouseEnter={(e) => {
                   if (a.status === "complete")
@@ -468,8 +462,11 @@ export default function DashboardPage() {
                     "transparent";
                 }}
               >
-                {/* Filename */}
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+                {/* Filename — links to report when complete */}
+                <Link
+                  to={a.status === "complete" ? `/reports/${a.id}` : "#"}
+                  style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0, textDecoration: "none" }}
+                >
                   <FileText size={15} color="var(--text-muted)" style={{ flexShrink: 0 }} />
                   <div style={{ minWidth: 0 }}>
                     <div
@@ -513,7 +510,7 @@ export default function DashboardPage() {
                       </div>
                     )}
                   </div>
-                </div>
+                </Link>
 
                 {/* Score */}
                 <div>

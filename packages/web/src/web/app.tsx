@@ -1,6 +1,5 @@
 import { Route, Switch } from "wouter";
 import Layout from "./components/Layout";
-import { ProtectedRoute } from "./components/ProtectedRoute";
 import DashboardPage from "./pages/index";
 import AnalyzePage from "./pages/analyze";
 import ReportPage from "./pages/report";

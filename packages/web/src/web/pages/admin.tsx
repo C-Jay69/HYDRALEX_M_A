@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { Link } from "wouter";
 import {
   Users, BarChart3, FileText, ShieldAlert, Activity,
-  ChevronRight, Scale, TrendingUp, CheckCircle, XCircle,
-  Crown, RefreshCcw,
+  ChevronRight, TrendingUp, CheckCircle, XCircle,
+  Crown,
 } from "lucide-react";
 import { formatDate, getRiskColor } from "../lib/utils";
 import ScoreBadge from "../components/ScoreBadge";

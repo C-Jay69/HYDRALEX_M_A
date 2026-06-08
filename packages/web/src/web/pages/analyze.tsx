@@ -219,7 +219,6 @@ export default function AnalyzePage() {
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
-          onClick={() => !selectedFile && fileInputRef.current?.click()}
           style={{
             border: `2px dashed ${dragOver ? "var(--accent-gold)" : selectedFile ? "var(--risk-low)" : "var(--border)"}`,
             borderRadius: "10px",
@@ -230,7 +229,6 @@ export default function AnalyzePage() {
               : "var(--bg-secondary)",
             padding: "48px 32px",
             textAlign: "center",
-            cursor: selectedFile ? "default" : "pointer",
             transition: "all 0.2s",
             marginBottom: "20px",
           }}
@@ -239,6 +237,7 @@ export default function AnalyzePage() {
             ref={fileInputRef}
             type="file"
             accept=".pdf,.txt"
+            aria-label="Upload contract file"
             style={{ display: "none" }}
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -296,16 +295,23 @@ export default function AnalyzePage() {
                 color="var(--text-muted)"
                 style={{ margin: "0 auto 12px" }}
               />
-              <div
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
                 style={{
                   fontFamily: "Poppins, sans-serif",
                   fontWeight: 600,
                   color: "var(--text-secondary)",
                   marginBottom: "4px",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: "inherit",
+                  padding: 0,
                 }}
               >
                 Drop file here or click to browse
-              </div>
+              </button>
               <div style={{ color: "var(--text-muted)", fontSize: "12px" }}>
                 Supports .pdf and .txt files
               </div>
@@ -318,6 +324,7 @@ export default function AnalyzePage() {
       {mode === "paste" && (
         <div style={{ marginBottom: "20px" }}>
           <textarea
+            aria-label="Contract text"
             value={pastedText}
             onChange={(e) => setPastedText(e.target.value)}
             placeholder="Paste the full M&A contract text here..."

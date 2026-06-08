@@ -82,10 +82,12 @@ export default function SignInPage() {
             )}
 
             <div style={{ marginBottom: "18px" }}>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <label htmlFor="signin-email" style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 Email
               </label>
               <input
+                id="signin-email"
+                aria-label="Email"
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
@@ -106,11 +108,13 @@ export default function SignInPage() {
             </div>
 
             <div style={{ marginBottom: "24px" }}>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <label htmlFor="signin-password" style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 Password
               </label>
               <div style={{ position: "relative" }}>
                 <input
+                  id="signin-password"
+                  aria-label="Password"
                   type={showPwd ? "text" : "password"}
                   value={password}
                   onChange={e => setPassword(e.target.value)}

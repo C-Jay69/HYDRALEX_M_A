@@ -36,10 +36,12 @@ class AnalysisResult:
     adjusted_score_if_fixed: int
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
 
+_DEFAULT_CONFIG = str(Path(__file__).parent / "merger_scoring_config.yaml")
+
 class MergerRiskAnalyzer:
     """M&A Merger Agreement Risk Scoring Engine"""
-    
-    def __init__(self, config_path: str = "merger_scoring_config.yaml"):
+
+    def __init__(self, config_path: str = _DEFAULT_CONFIG):
         """Initialize analyzer with YAML configuration"""
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)

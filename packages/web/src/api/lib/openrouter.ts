@@ -2892,9 +2892,11 @@ export function reconcilePipelineOutput(out: ReconcilerInput): ReconcilerResult 
       }
     }
 
-    a2Hits.length > 0
-      ? fail('A2', a2Hits, 'Applied suppression rationale contradicts classified deal type. Update the matrix rationale for this structure, or re-examine the classification.')
-      : pass('A2');
+    if (a2Hits.length > 0) {
+      fail('A2', a2Hits, 'Applied suppression rationale contradicts classified deal type. Update the matrix rationale for this structure, or re-examine the classification.');
+    } else {
+      pass('A2');
+    }
   }
 
   // A1 — severity contradiction: a suppressed item rated CRITICAL/HIGH in findings.
@@ -2909,9 +2911,11 @@ export function reconcilePipelineOutput(out: ReconcilerInput): ReconcilerResult 
       a1Hits.push(`"${s.item}" suppressed as not-critical, but rated ${hit.severity} in findings`);
     }
   }
-  a1Hits.length > 0
-    ? fail('A1', a1Hits, 'Un-suppress and surface at the highest stated severity. Suppression loses to an explicit critical finding.')
-    : pass('A1');
+  if (a1Hits.length > 0) {
+    fail('A1', a1Hits, 'Un-suppress and surface at the highest stated severity. Suppression loses to an explicit critical finding.');
+  } else {
+    pass('A1');
+  }
 
   // CALIB — calibration coherence: leniency may come only from OMITTED rows.
   //
@@ -2935,11 +2939,13 @@ export function reconcilePipelineOutput(out: ReconcilerInput): ReconcilerResult 
     const adverseHighCrit = out.findings.filter(
       f => f.disposition === 'ALLOCATED_ADVERSE' && (f.severity === 'CRITICAL' || f.severity === 'HIGH')
     );
-    adverseHighCrit.length > 0
-      ? fail('CALIB', adverseHighCrit.map(f =>
-          `${f.topic} is ALLOCATED_ADVERSE/${f.severity} but netTierBump=${out.netTierBump} — leniency cannot apply to adversely-positioned deal-breakers`
-        ), 'Recompute calibration: leniency (Tier floor) may only come from OMITTED rows. ALLOCATED_ADVERSE criticals must not receive any bump.')
-      : pass('CALIB');
+    if (adverseHighCrit.length > 0) {
+      fail('CALIB', adverseHighCrit.map(f =>
+        `${f.topic} is ALLOCATED_ADVERSE/${f.severity} but netTierBump=${out.netTierBump} — leniency cannot apply to adversely-positioned deal-breakers`
+      ), 'Recompute calibration: leniency (Tier floor) may only come from OMITTED rows. ALLOCATED_ADVERSE criticals must not receive any bump.');
+    } else {
+      pass('CALIB');
+    }
   } else {
     pass('CALIB');
   }
@@ -2949,9 +2955,11 @@ export function reconcilePipelineOutput(out: ReconcilerInput): ReconcilerResult 
     const a5Hits = out.suppressions
       .filter(s => s.applied && STRUCTURE_KEYED_SUPPRESSIONS.some(k => normalizeKey(k) === normalizeKey(s.item)))
       .map(s => `"${s.item}" suppressed despite CONTESTED deal-type classification`);
-    a5Hits.length > 0
-      ? fail('A5', a5Hits, 'Disable structure-keyed suppression; evaluate worst-case across all candidate structures.')
-      : pass('A5');
+    if (a5Hits.length > 0) {
+      fail('A5', a5Hits, 'Disable structure-keyed suppression; evaluate worst-case across all candidate structures.');
+    } else {
+      pass('A5');
+    }
   } else {
     pass('A5');
   }
@@ -3132,7 +3140,7 @@ const SCAFFOLD_MARKERS: RegExp[] = [
   /California: near-total ban on non-competes/i,
   /\u00a7542\.335/,          // Florida statute fragment
   /state direction, security, caps, survival/i,
-  /state \"Economic engine incomplete\"/i,
+  /state "Economic engine incomplete"/i,
 ];
 
 /**

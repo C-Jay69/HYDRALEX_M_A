@@ -87,10 +87,12 @@ export default function SignUpPage() {
             )}
 
             <div style={{ marginBottom: "16px" }}>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <label htmlFor="signup-name" style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 Full Name
               </label>
               <input
+                id="signup-name"
+                aria-label="Full Name"
                 type="text"
                 value={name}
                 onChange={e => setName(e.target.value)}
@@ -111,10 +113,12 @@ export default function SignUpPage() {
             </div>
 
             <div style={{ marginBottom: "16px" }}>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <label htmlFor="signup-email" style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 Work Email
               </label>
               <input
+                id="signup-email"
+                aria-label="Work Email"
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
@@ -135,11 +139,13 @@ export default function SignUpPage() {
             </div>
 
             <div style={{ marginBottom: "24px" }}>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <label htmlFor="signup-password" style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 Password
               </label>
               <div style={{ position: "relative" }}>
                 <input
+                  id="signup-password"
+                  aria-label="Password"
                   type={showPwd ? "text" : "password"}
                   value={password}
                   onChange={e => setPassword(e.target.value)}

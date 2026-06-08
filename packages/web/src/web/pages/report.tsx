@@ -6,10 +6,8 @@ import ScoreBadge from "../components/ScoreBadge";
 import { marked } from "marked";
 import {
   ArrowLeft,
-  Clock,
   Loader,
   CheckCircle,
-  AlertTriangle,
   XCircle,
   User,
   Users,

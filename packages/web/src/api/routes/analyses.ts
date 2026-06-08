@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { db } from "../database";
 import * as schema from "../database/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import {
   getOpenRouterClient,
   runAnalyst,
@@ -79,6 +79,7 @@ export const analyses = new Hono()
   // Get single analysis
   .get("/:id", async (c) => {
     const id = parseInt(c.req.param("id"));
+    if (isNaN(id)) return c.json({ error: "Not found" }, 404);
     const [row] = await db
       .select()
       .from(schema.analyses)
@@ -122,7 +123,7 @@ export const analyses = new Hono()
     const [inserted] = await db
       .insert(schema.analyses)
       .values({
-        userId: user?.id ?? null,
+        userId: user?.id ?? "",
         filename: filename ?? "Pasted Contract",
         contractText: contractText.trim(),
         status: "analyzing",
@@ -194,7 +195,7 @@ export const analyses = new Hono()
     const [inserted] = await db
       .insert(schema.analyses)
       .values({
-        userId: user?.id ?? null,
+        userId: user?.id ?? "",
         filename,
         contractText: contractText.trim(),
         status: "analyzing",
@@ -220,10 +221,20 @@ export const analyses = new Hono()
     return c.json({ id: inserted.id, status: "analyzing" }, 201);
   })
 
-  // Delete analysis
+  // Delete analysis — owner or admin only
   .delete("/:id", async (c) => {
+    const user = c.get("user") as any;
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
     const id = parseInt(c.req.param("id"));
-    await db.delete(schema.analyses).where(eq(schema.analyses.id, id));
+    if (isNaN(id)) return c.json({ error: "Not found" }, 404);
+    const adminUser = await isAdmin(user.id);
+    if (adminUser) {
+      await db.delete(schema.analyses).where(eq(schema.analyses.id, id));
+    } else {
+      await db.delete(schema.analyses).where(
+        and(eq(schema.analyses.id, id), eq(schema.analyses.userId, user.id))
+      );
+    }
     return c.json({ success: true }, 200);
   });
 
