@@ -18,12 +18,21 @@
     "seed:admin": "bun --env-file=../../.env scripts/seed-admin.ts"
   },
   "dependencies": {
+<<<<<<< HEAD
+=======
+    "@hono/node-server": "^2.0.5",
+>>>>>>> claude/confident-babbage-HM6av
     "@libsql/client": "^0.17.2",
     "@radix-ui/react-slot": "^1.2.4",
     "@runablehq/website-runtime": "^0.10.0",
     "@tanstack/react-query": "^5.100.6",
+<<<<<<< HEAD
     "autumn-js": "^1.2.0",
     "better-auth": "^1.6.14",
+=======
+    "autumn-js": "1.2.0",
+    "better-auth": "1.4.22",
+>>>>>>> claude/confident-babbage-HM6av
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",

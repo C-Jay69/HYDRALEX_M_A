@@ -1,0 +1,319 @@
+# merger_scoring_config.yaml
+# M&A Merger Agreement Risk Scoring Engine v2.0 — Configuration
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GLOBAL CONFIG
+# ─────────────────────────────────────────────────────────────────────────────
+config:
+  base_score: 100
+  skeleton_draft_leniency: 15  # Points added back for Tier-1 skeleton drafts
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RISK LEVELS  (score_range is inclusive [min, max])
+# ─────────────────────────────────────────────────────────────────────────────
+risk_levels:
+  minimal:
+    score_range: [90, 100]
+    label: "✅ Minimal Risk"
+    recommendation: "Proceed — minor clean-up only"
+  low:
+    score_range: [75, 89]
+    label: "🟢 Low Risk"
+    recommendation: "Proceed with minor revisions"
+  moderate:
+    score_range: [55, 74]
+    label: "🟡 Moderate Risk"
+    recommendation: "Proceed with conditions — address flagged items before signing"
+  high:
+    score_range: [35, 54]
+    label: "🟠 High Risk"
+    recommendation: "Significant renegotiation required before proceeding"
+  critical:
+    score_range: [0, 34]
+    label: "🔴 Critical Deficiencies"
+    recommendation: "Do Not Proceed — fundamental structural defects present"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DEDUCTIONS  (each key maps to rule names used in merger_risk_analyzer.py)
+# ─────────────────────────────────────────────────────────────────────────────
+deductions:
+
+  indemnification:
+    missing_framework:
+      deduction: 25
+      description: "No indemnification framework — buyer has zero post-closing remedy"
+      severity: "critical"
+    missing_cap_only:
+      deduction: 10
+      description: "Indemnification cap absent — unlimited seller exposure"
+      severity: "high"
+    missing_basket_only:
+      deduction: 5
+      description: "Indemnification basket absent (may favor buyer)"
+      severity: "medium"
+    missing_survival_only:
+      deduction: 8
+      description: "No survival period — reps may expire at closing"
+      severity: "high"
+
+  earnout:
+    undefined_metrics:
+      deduction: 18
+      description: "Earnout formula has no defined metrics — litigation-certain"
+      severity: "critical"
+    missing_dispute_resolution:
+      deduction: 8
+      description: "No earnout dispute resolution mechanism"
+      severity: "medium"
+
+  termination:
+    missing_outside_date:
+      deduction: 7
+      description: "No outside closing date — deal can drag indefinitely"
+      severity: "medium"
+    missing_termination_clause:
+      deduction: 10
+      description: "No termination rights — parties cannot exit"
+      severity: "high"
+
+  representations_and_warranties:
+    weasel_words_present:
+      deduction: 8
+      description: "Weak knowledge qualifiers weaken reps materially"
+      severity: "high"
+
+  assumption_of_liabilities:
+    automatic_assumption_no_review:
+      deduction: 12
+      description: "Automatic contract assumption — no buyer review right"
+      severity: "high"
+
+  definitions:
+    missing_material_adverse_effect_definition:
+      deduction: 5
+      description: "MAE/MAC not defined"
+      severity: "medium"
+    missing_knowledge_definition:
+      deduction: 4
+      description: "'Knowledge' not defined — qualification scope unclear"
+      severity: "medium"
+    missing_closing_date_definition:
+      deduction: 3
+      description: "Closing Date not defined"
+      severity: "low"
+    multiple_definitions_missing:
+      threshold: 3           # trigger when this many defs are absent
+      additional_deduction: 5  # extra penalty on top of per-item deductions
+
+  boilerplate:
+    missing_entire_agreement:
+      deduction: 3
+      description: "No entire agreement / integration clause"
+      severity: "low"
+    missing_amendment_waiver:
+      deduction: 3
+      description: "No amendment / waiver clause"
+      severity: "low"
+    missing_governing_law:
+      deduction: 8
+      description: "Governing law not specified"
+      severity: "high"
+
+  contradictions:
+    diligence_vs_investigations:
+      deduction: 15
+      description: "Contradiction: 'no further disclosures' with ongoing investigations"
+      severity: "critical"
+
+  operational_risks:
+    employee_retention_short:
+      deduction: 6
+      description: "Employee retention period below 90-day industry standard"
+      severity: "medium"
+    data_integrity_acknowledgment:
+      deduction: 10
+      description: "Data may be unrecoverable post-migration — absolute value defect"
+      severity: "high"
+
+  covenants:
+    no_affirmative_covenants:
+      deduction: 8
+      description: "No pre-closing ordinary-course covenants — target can take material actions"
+      severity: "medium"
+
+  escrow_and_security:
+    no_escrow_no_indemnity:
+      deduction: 20
+      description: "Neither escrow/holdback nor indemnification — buyer unsecured"
+      severity: "critical"
+
+  documentation_quality:
+    duplicate_sections:
+      deduction: 3
+      description: "Duplicate section headers — document not finalized"
+      severity: "low"
+    missing_schedules_referenced:
+      deduction: 5
+      description: "Schedules referenced but not provided"
+      severity: "high"
+      per_schedule_missing: 1  # additional per schedule (capped at base deduction)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECTION PATTERNS  (compiled to regex at runtime)
+# ─────────────────────────────────────────────────────────────────────────────
+detection_patterns:
+
+  indemnification:
+    present_patterns:
+      patterns:
+        - "indemnif"
+        - "hold harmless"
+        - "indemnitor"
+    cap_patterns:
+      patterns:
+        - "indemnification cap"
+        - "aggregate liability.*shall not exceed"
+        - "maximum liability"
+        - "cap on (?:liability|indemnification)"
+    basket_patterns:
+      patterns:
+        - "\\bbasket\\b"
+        - "deductible"
+        - "de minimis"
+        - "aggregate threshold"
+        - "first dollar"
+    survival_patterns:
+      patterns:
+        - "survive.*closing"
+        - "survival period"
+        - "survive.*for.*(?:month|year)"
+        - "representations.*shall survive"
+
+  earnout:
+    present_patterns:
+      patterns:
+        - "earn.?out"
+        - "deferred.*consideration"
+        - "deferred.*(?:based|payment|amount)"
+        - "contingent.*payment"
+        - "performance.*payment"
+    metric_patterns:
+      patterns:
+        - "\\bEBITDA\\b"
+        - "\\bRevenue\\b.*\\$"
+        - "\\$.*Revenue"
+        - "gross profit.*target"
+        - "net income.*threshold"
+        - "GAAP.*metric"
+    dispute_patterns:
+      patterns:
+        - "earnout dispute"
+        - "independent accountant"
+        - "arbitration.*earnout"
+        - "earn.?out.*accountant"
+
+  termination:
+    outside_date_patterns:
+      patterns:
+        - "outside (?:closing )?date"
+        - "outside date"
+        - "end date"
+        - "termination date.*(?:20\\d\\d)"
+        - "closing shall occur.*(?:on or before|no later than)"
+    termination_clause_patterns:
+      patterns:
+        - "may terminate"
+        - "right to terminate"
+        - "termination.*mutual consent"
+        - "Section.*Termination"
+        - "Article.*Termination"
+
+  weasel_words:
+    patterns:
+      - "no known"
+      - "to (?:our |the )best of.*knowledge"
+      - "substantially comply"
+      - "material(?:ly)? accurate"
+      - "fairly present"
+
+  definitions:
+    required:
+      - name: "Material Adverse Effect"
+        pattern: "material adverse (?:effect|change|event)"
+      - name: "Knowledge"
+        pattern: "(?:\"Knowledge\"|means.*knowledge|knowledge.*means)"
+      - name: "Closing Date"
+        pattern: "(?:\"Closing Date\"|Closing Date.*means)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# INTERACTION WEIGHTING  (stacks that compound risk)
+# The `conditions` list references rule names that must ALL be in findings.
+# ─────────────────────────────────────────────────────────────────────────────
+interaction_weighting:
+  stacks:
+
+    earnout_litigation:
+      name: "Earnout Litigation Stack"
+      conditions:
+        - "undefined_metrics"
+        - "missing_dispute_resolution"
+      compounded_deduction: 10
+      description: "Undefined earnout + no dispute resolution = litigation-certain. Combined deduction applied."
+
+    indemnity_nullification:
+      name: "Indemnity Nullification Stack"
+      conditions:
+        - "missing_framework"
+        - "weasel_words_present"
+      compounded_deduction: 12
+      description: "No indemnity + weak reps = buyer has zero post-closing recovery path."
+
+    operational_collapse:
+      name: "Operational Collapse Stack"
+      conditions:
+        - "no_affirmative_covenants"
+        - "no_escrow_no_indemnity"
+      compounded_deduction: 8
+      description: "No covenants + no security = material operational risk between signing and close."
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ARBITRATION COST THRESHOLDS
+# ─────────────────────────────────────────────────────────────────────────────
+arbitration_cost_thresholds:
+  thresholds:
+    delaware:
+      min_claim_usd: 500000
+      description: "Delaware JAMS/AAA M&A panel: $500K–$2M+ cost, 2–3 years. Claims below $500K are economically irrational."
+    new york:
+      min_claim_usd: 750000
+      description: "New York JAMS/AAA panel: $750K–$2M+ cost. Claims below $750K economically irrational."
+    california:
+      min_claim_usd: 600000
+      description: "California JAMS panel: $600K–$1.5M+ cost. Consider litigation alternative for smaller claims."
+    wilmington:
+      min_claim_usd: 500000
+      description: "Wilmington (Delaware) arbitration panel: $500K minimum rational claim."
+    default:
+      min_claim_usd: 250000
+      description: "Unknown jurisdiction — assume ~$250K minimum rational claim for multi-arbitrator panel."
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TRAINING FEEDBACK  (items to surface in "what was missed" output)
+# ─────────────────────────────────────────────────────────────────────────────
+training_feedback:
+  missing_boilerplate_alerts:
+    - clause_type: "non_disparagement"
+      pattern: "non-disparagement|disparage"
+      message: "Non-disparagement clause absent — consider for key personnel transitions"
+    - clause_type: "confidentiality"
+      pattern: "confidential(?:ity)?|non-disclosure"
+      message: "No continuing confidentiality covenant — NDA may cover pre-signing but post-close obligations unclear"
+    - clause_type: "non_compete"
+      pattern: "non-compet(?:e|ition)|restrictive covenant"
+      message: "Non-compete absent — seller could compete post-close (check jurisdiction enforceability)"
+    - clause_type: "dispute_resolution"
+      pattern: "arbitration|dispute resolution|mediation"
+      message: "No dispute resolution clause — defaults to litigation in governing law jurisdiction"
+    - clause_type: "specific_performance"
+      pattern: "specific performance|equitable relief"
+      message: "No specific performance right — money damages only if party refuses to close"

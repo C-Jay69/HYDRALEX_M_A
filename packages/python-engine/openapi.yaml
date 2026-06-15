@@ -1,0 +1,207 @@
+# openapi.yaml
+# M&A Merger Risk Analyzer API v1.0
+
+openapi: 3.0.3
+info:
+  title: M&A Merger Risk Analyzer API
+  description: AI-powered risk scoring for merger agreements
+  version: 1.0.0
+  contact:
+    name: LegalTech Support
+    email: support@mergeranalyzer.com
+
+servers:
+  - url: https://api.mergeranalyzer.com/v1
+    description: Production server
+  - url: http://localhost:8000/v1
+    description: Local development
+
+paths:
+  /analyze:
+    post:
+      summary: Analyze a merger agreement
+      description: Upload a merger agreement document and receive risk scoring
+      operationId: analyzeDocument
+      
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Merger agreement (PDF, DOCX, or TXT)
+                options:
+                  type: object
+                  properties:
+                    include_detailed_findings:
+                      type: boolean
+                      default: true
+                    perspective:
+                      type: string
+                      enum: [buyer, seller, neutral]
+                      default: buyer
+                    output_format:
+                      type: string
+                      enum: [scorecard, json, pdf]
+                      default: json
+      
+      responses:
+        '200':
+          description: Analysis complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: File too large (>10MB)
+        '429':
+          description: Rate limit exceeded
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  version:
+                    type: string
+                    example: "2.0.0"
+
+components:
+  schemas:
+    AnalysisResponse:
+      type: object
+      properties:
+        metadata:
+          type: object
+          properties:
+            document_name:
+              type: string
+            timestamp:
+              type: string
+              format: date-time
+            processing_time_ms:
+              type: integer
+        score:
+          type: object
+          properties:
+            final_score:
+              type: integer
+              minimum: 0
+              maximum: 100
+            risk_level:
+              type: string
+              enum: ["🔴 Critical Deficiencies", "🟠 High Risk", "🟡 Moderate Risk", "🟢 Low Risk", "✅ Minimal Risk"]
+            recommendation:
+              type: string
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Finding'
+        interaction_stacks:
+          type: array
+          items:
+            $ref: '#/components/schemas/InteractionStack'
+        must_fix:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/MustFixItem'
+        arbitration_threshold:
+          $ref: '#/components/schemas/ArbitrationThreshold'
+        scorecard_url:
+          type: string
+          description: URL to HTML scorecard (if output_format=pdf)
+    
+    Finding:
+      type: object
+      properties:
+        rule:
+          type: string
+        deduction:
+          type: integer
+        description:
+          type: string
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+        location:
+          type: string
+          nullable: true
+        suggestion:
+          type: string
+    
+    InteractionStack:
+      type: object
+      properties:
+        name:
+          type: string
+        compounded_deduction:
+          type: integer
+        description:
+          type: string
+    
+    MustFixItem:
+      type: object
+      properties:
+        description:
+          type: string
+        suggestion:
+          type: string
+        severity:
+          type: string
+    
+    ArbitrationThreshold:
+      type: object
+      properties:
+        jurisdiction:
+          type: string
+        min_claim_usd:
+          type: integer
+        description:
+          type: string
+    
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        details:
+          type: object
+
+# Rate limiting
+x-rate-limit:
+  limit: 100
+  period: 3600  # per hour
+
+# Webhook support (async analysis for large docs)
+x-webhooks:
+  analysis_complete:
+    post:
+      summary: Webhook when async analysis completes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalysisResponse'
+PART 4: FASTAPI IMPLEMENTATION (Production Ready)

@@ -1,1 +1,21 @@
+<<<<<<< HEAD
 node_modules
+=======
+node_modules/
+.bun/
+dist/
+dist-electron/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+venv/
+.DS_Store
+*.log
+packages/mobile/.expo/
+packages/desktop/dist/
+packages/desktop/dist-electron/
+.turbo/cache/
+*.db
+>>>>>>> claude/confident-babbage-HM6av

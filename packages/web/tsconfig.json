@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "compilerOptions": {
     "target": "ESNext",
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
@@ -21,3 +22,25 @@
   },
   "include": ["src"]
 }
+=======
+	"files": [],
+	"references": [
+		{
+			"path": "./tsconfig.app.json"
+		},
+		{
+			"path": "./tsconfig.node.json"
+		}
+	],
+	"compilerOptions": {
+		"types": [
+			"node"
+		],
+		"paths": {
+			"@/*": [
+				"./src/web/*"
+			]
+		}
+	}
+}
+>>>>>>> claude/confident-babbage-HM6av
