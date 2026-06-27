@@ -14,16 +14,16 @@ function App() {
   return (
     <Switch>
       {/* Public — no layout */}
+      <Route path="/" component={LandingPage} />
       <Route path="/sign-in" component={SignInPage} />
       <Route path="/sign-up" component={SignUpPage} />
-      <Route path="/landing" component={LandingPage} />
 
       {/* Main app — layout + auth guard */}
       <Route>
         <ProtectedRoute>
           <Layout>
             <Switch>
-              <Route path="/" component={DashboardPage} />
+              <Route path="/dashboard" component={DashboardPage} />
               <Route path="/analyze" component={AnalyzePage} />
               <Route path="/reports/:id" component={ReportPage} />
               <Route path="/pricing" component={PricingPage} />

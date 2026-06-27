@@ -23,7 +23,7 @@ export default function SignInPage() {
     if (res.error) {
       setError(res.error.message ?? "Invalid credentials");
     } else {
-      navigate("/");
+      navigate("/dashboard");
     }
   }
 

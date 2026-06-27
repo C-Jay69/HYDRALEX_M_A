@@ -29,6 +29,6 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!session) return <Redirect to="/landing" />;
+  if (!session) return <Redirect to="/sign-in" />;
   return <>{children}</>;
 }

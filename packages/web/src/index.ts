@@ -11,7 +11,7 @@ import { eq } from "drizzle-orm";
 const app = new Hono()
   .use(
     cors({
-      origin: (origin) => origin ?? "*",
+      origin: process.env.FRONTEND_URL ?? "http://localhost:5173",
       credentials: true,
       exposeHeaders: ["set-auth-token"],
     })

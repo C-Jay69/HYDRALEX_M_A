@@ -27,7 +27,7 @@ export default function Layout({ children }: LayoutProps) {
   const isAdmin = (meData as any)?.isAdmin === true;
 
   const navItems = [
-    { href: "/", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/analyze", label: "New Analysis", icon: FilePlus },
     { href: "/pricing", label: "Pricing", icon: Tag },
   ];
@@ -35,7 +35,7 @@ export default function Layout({ children }: LayoutProps) {
   async function handleSignOut() {
     await authClient.signOut();
     clearToken();
-    window.location.href = "/landing";
+    window.location.href = "/";
   }
 
   return (
@@ -49,7 +49,7 @@ export default function Layout({ children }: LayoutProps) {
       }}>
         {/* Logo */}
         <div style={{ padding: "20px 16px 16px", borderBottom: "1px solid var(--border)" }}>
-          <Link to="/">
+          <Link to="/dashboard">
             <img
               src="/logo.png"
               alt="HydraForge"
