@@ -1,0 +1,35 @@
+import { Route, Switch } from "wouter";
+import Layout from "./Layout";
+import { ProtectedRoute } from "./components/ProtectedRoute";
+import DashboardPage from "./web/pages/index";
+import AnalyzePage from "./web/pages/analyze";
+import ReportPage from "./web/pages/report";
+import SignInPage from "./web/pages/sign-in";
+import SignUpPage from "./web/pages/sign-up";
+import PricingPage from "./web/pages/pricing";
+import AdminPage from "./web/pages/admin";
+
+function App() {
+  return (
+    <Switch>
+      {/* Auth pages — no layout wrapper */}
+      <Route path="/sign-in" component={SignInPage} />
+      <Route path="/sign-up" component={SignUpPage} />
+
+      {/* Main app — wrapped in layout */}
+      <Route>
+        <Layout>
+          <Switch>
+            <Route path="/" component={DashboardPage} />
+            <Route path="/analyze" component={AnalyzePage} />
+            <Route path="/reports/:id" component={ReportPage} />
+            <Route path="/pricing" component={PricingPage} />
+            <Route path="/admin" component={AdminPage} />
+          </Switch>
+        </Layout>
+      </Route>
+    </Switch>
+  );
+}
+
+export default App;

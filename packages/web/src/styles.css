@@ -1,0 +1,123 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500&display=swap');
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #0a0d14;
+  --bg-secondary: #111520;
+  --bg-tertiary: #1a1f2e;
+  --border: #252b3b;
+  --border-light: #2e3547;
+  --text-primary: #e8ecf4;
+  --text-secondary: #8b93a8;
+  --text-muted: #545d72;
+  --accent-gold: #d4a843;
+  --accent-gold-dim: #a07c2a;
+  --accent-gold-bg: rgba(212, 168, 67, 0.08);
+  --risk-low: #22c55e;
+  --risk-moderate: #eab308;
+  --risk-high: #f97316;
+  --risk-critical: #ef4444;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5 {
+  font-family: 'Poppins', sans-serif;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* Markdown report styles */
+.report-markdown h2 {
+  font-family: 'Poppins', sans-serif;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+  margin: 2rem 0 1rem;
+}
+.report-markdown h3 {
+  font-family: 'Poppins', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--accent-gold);
+  margin: 1.5rem 0 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.8rem;
+}
+.report-markdown h4 {
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 1.2rem 0 0.5rem;
+}
+.report-markdown p {
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: 0.75rem;
+}
+.report-markdown ul, .report-markdown ol {
+  padding-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.report-markdown li {
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: 0.3rem;
+}
+.report-markdown strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.report-markdown code {
+  background: var(--bg-tertiary);
+  padding: 0.1em 0.4em;
+  border-radius: 3px;
+  font-size: 0.85em;
+  color: var(--accent-gold);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-fade-in { animation: fadeIn 0.25s ease forwards; }
+.animate-pulse-dot { animation: pulse-dot 1.5s ease infinite; }
+.spinner { animation: spin 0.8s linear infinite; }
+
+/* Step progress */
+.step-active { color: var(--accent-gold); }
+.step-done { color: var(--risk-low); }
+.step-pending { color: var(--text-muted); }
