@@ -1,5 +1,5 @@
 import { hc } from "hono/client";
-import type { AppType } from "../../api";
+import type { AppType } from "../../index";
 import { getToken } from "./auth";
 
 const client = hc<AppType>("/", {

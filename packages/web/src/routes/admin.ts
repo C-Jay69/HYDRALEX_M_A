@@ -1,14 +1,13 @@
 import { Hono } from "hono";
 import { db } from "../database";
 import * as schema from "../database/schema";
-import { eq, desc, count, sql, and, gte } from "drizzle-orm";
+import { eq, desc, count, and, gte } from "drizzle-orm";
 import { authMiddleware, requireAuth } from "../middleware/auth";
 
 // Admin-only middleware
 const requireAdmin = async (c: any, next: any) => {
   const user = c.get("user") as any;
   if (!user) return c.json({ message: "Unauthorized" }, 401);
-  // Check userMeta for admin flag
   const [meta] = await db
     .select()
     .from(schema.userMeta)
@@ -24,43 +23,22 @@ export const admin = new Hono()
 
   // Stats overview
   .get("/stats", async (c) => {
-    const [totalUsers] = await db
-      .select({ count: count() })
-      .from(schema.user);
-
-    const [totalAnalyses] = await db
-      .select({ count: count() })
-      .from(schema.analyses);
-
+    const [totalUsers] = await db.select({ count: count() }).from(schema.user);
+    const [totalAnalyses] = await db.select({ count: count() }).from(schema.analyses);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const [todayAnalyses] = await db
       .select({ count: count() })
       .from(schema.analyses)
       .where(gte(schema.analyses.createdAt, today));
-
     const [completedAnalyses] = await db
       .select({ count: count() })
       .from(schema.analyses)
       .where(eq(schema.analyses.status, "complete"));
-
-    const successRate =
-      totalAnalyses.count > 0
-        ? Math.round((completedAnalyses.count / totalAnalyses.count) * 100)
-        : 0;
-
-    return c.json(
-      {
-        stats: {
-          totalUsers: totalUsers.count,
-          totalAnalyses: totalAnalyses.count,
-          todayAnalyses: todayAnalyses.count,
-          completedAnalyses: completedAnalyses.count,
-          successRate,
-        },
-      },
-      200
-    );
+    const successRate = totalAnalyses.count > 0
+      ? Math.round((completedAnalyses.count / totalAnalyses.count) * 100)
+      : 0;
+    return c.json({ stats: { totalUsers: totalUsers.count, totalAnalyses: totalAnalyses.count, todayAnalyses: todayAnalyses.count, completedAnalyses: completedAnalyses.count, successRate } }, 200);
   })
 
   // Users list
@@ -77,7 +55,6 @@ export const admin = new Hono()
       .from(schema.user)
       .leftJoin(schema.userMeta, eq(schema.userMeta.userId, schema.user.id))
       .orderBy(desc(schema.user.createdAt));
-
     return c.json({ users }, 200);
   })
 
@@ -96,9 +73,7 @@ export const admin = new Hono()
       .from(schema.user)
       .leftJoin(schema.userMeta, eq(schema.userMeta.userId, schema.user.id))
       .where(eq(schema.user.id, id));
-
     if (!u) return c.json({ error: "User not found" }, 404);
-
     const userAnalyses = await db
       .select({
         id: schema.analyses.id,
@@ -112,31 +87,36 @@ export const admin = new Hono()
       .where(eq(schema.analyses.userId, id))
       .orderBy(desc(schema.analyses.createdAt))
       .limit(20);
-
     return c.json({ user: u, analyses: userAnalyses }, 200);
   })
 
-  // Toggle admin
+  // Toggle admin status
   .patch("/users/:id", async (c) => {
     const id = c.req.param("id");
     const body = await c.req.json() as { isAdmin?: boolean };
-
     if (typeof body.isAdmin === "boolean") {
-      const existing = await db
-        .select()
-        .from(schema.userMeta)
-        .where(eq(schema.userMeta.userId, id));
-
+      const existing = await db.select().from(schema.userMeta).where(eq(schema.userMeta.userId, id));
       if (existing.length === 0) {
         await db.insert(schema.userMeta).values({ userId: id, isAdmin: body.isAdmin });
       } else {
-        await db
-          .update(schema.userMeta)
-          .set({ isAdmin: body.isAdmin })
-          .where(eq(schema.userMeta.userId, id));
+        await db.update(schema.userMeta).set({ isAdmin: body.isAdmin }).where(eq(schema.userMeta.userId, id));
       }
     }
+    return c.json({ success: true }, 200);
+  })
 
+  // Delete user (soft — removes data, logs action)
+  .delete("/users/:id", async (c) => {
+    const id = c.req.param("id");
+    await db.delete(schema.analyses).where(eq(schema.analyses.userId, id));
+    await db.delete(schema.userMeta).where(eq(schema.userMeta.userId, id));
+    await db.insert(schema.auditLogs).values({
+      userId: id,
+      action: "USER_DELETED_BY_ADMIN",
+      resourceType: "user",
+      resourceId: id,
+      metadata: JSON.stringify({ deletedAt: new Date().toISOString() }),
+    });
     return c.json({ success: true }, 200);
   })
 
@@ -157,7 +137,6 @@ export const admin = new Hono()
       .from(schema.analyses)
       .orderBy(desc(schema.analyses.createdAt))
       .limit(200);
-
     return c.json({ analyses: rows }, 200);
   })
 
@@ -168,6 +147,22 @@ export const admin = new Hono()
       .from(schema.auditLogs)
       .orderBy(desc(schema.auditLogs.createdAt))
       .limit(500);
-
     return c.json({ logs }, 200);
+  })
+
+  // System health
+  .get("/health", async (c) => {
+    const start = Date.now();
+    let dbOk = false;
+    try {
+      await db.select({ count: count() }).from(schema.user);
+      dbOk = true;
+    } catch {}
+    const latency = Date.now() - start;
+    return c.json({
+      status: dbOk ? "ok" : "degraded",
+      db: { ok: dbOk, latencyMs: latency },
+      uptime: Math.round(process.uptime()),
+      timestamp: new Date().toISOString(),
+    }, dbOk ? 200 : 503);
   });
