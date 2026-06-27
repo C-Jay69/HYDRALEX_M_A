@@ -13,5 +13,8 @@ venv/
 packages/mobile/.expo/
 packages/desktop/dist/
 packages/desktop/dist-electron/
-.turbo/cache/
+.turbo/
 *.db
+packages/web/local.db
+packages/web/check_*.ts
+packages/web/package-lock.json
