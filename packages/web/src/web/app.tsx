@@ -1,5 +1,7 @@
 import { Route, Switch } from "wouter";
 import Layout from "./components/Layout";
+import { ProtectedRoute } from "./components/ProtectedRoute";
+import LandingPage from "./pages/landing";
 import DashboardPage from "./pages/index";
 import AnalyzePage from "./pages/analyze";
 import ReportPage from "./pages/report";
@@ -11,21 +13,24 @@ import AdminPage from "./pages/admin";
 function App() {
   return (
     <Switch>
-      {/* Auth pages — no layout wrapper */}
+      {/* Public — no layout */}
       <Route path="/sign-in" component={SignInPage} />
       <Route path="/sign-up" component={SignUpPage} />
+      <Route path="/landing" component={LandingPage} />
 
-      {/* Main app — wrapped in layout */}
+      {/* Main app — layout + auth guard */}
       <Route>
-        <Layout>
-          <Switch>
-            <Route path="/" component={DashboardPage} />
-            <Route path="/analyze" component={AnalyzePage} />
-            <Route path="/reports/:id" component={ReportPage} />
-            <Route path="/pricing" component={PricingPage} />
-            <Route path="/admin" component={AdminPage} />
-          </Switch>
-        </Layout>
+        <ProtectedRoute>
+          <Layout>
+            <Switch>
+              <Route path="/" component={DashboardPage} />
+              <Route path="/analyze" component={AnalyzePage} />
+              <Route path="/reports/:id" component={ReportPage} />
+              <Route path="/pricing" component={PricingPage} />
+              <Route path="/admin" component={AdminPage} />
+            </Switch>
+          </Layout>
+        </ProtectedRoute>
       </Route>
     </Switch>
   );

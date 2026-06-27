@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { authClient, captureToken } from "../lib/auth";
-import { Scale, Eye, EyeOff, Loader } from "lucide-react";
+import { Eye, EyeOff, Loader } from "lucide-react";
 
 export default function SignInPage() {
   const [, navigate] = useLocation();
@@ -38,21 +38,10 @@ export default function SignInPage() {
     }}>
       <div style={{ width: "100%", maxWidth: "400px" }}>
         {/* Logo */}
-        <div style={{ textAlign: "center", marginBottom: "40px" }}>
-          <div style={{
-            width: "48px", height: "48px",
-            background: "var(--accent-gold-bg)",
-            border: "1px solid rgba(212,168,67,0.3)",
-            borderRadius: "10px",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            marginBottom: "16px",
-          }}>
-            <Scale size={22} color="var(--accent-gold)" />
-          </div>
+        <div style={{ textAlign: "center", marginBottom: "36px" }}>
+          <img src="/logo.png" alt="HydraForge" style={{ width: "160px", height: "auto", marginBottom: "20px" }} />
           <h1 style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700, fontSize: "1.5rem", color: "var(--text-primary)", marginBottom: "6px" }}>
-            Sign in to Hydraforge
+            Sign in to HydraForge
           </h1>
           <p style={{ color: "var(--text-muted)", fontSize: "13px" }}>
             M&A document intelligence platform

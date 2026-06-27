@@ -27,7 +27,7 @@ export default function honoDevPlugin(): Plugin {
 }
 
 async function loadApp(server: ViteDevServer) {
-  const mod = await server.ssrLoadModule("/src/api/index.ts");
+  const mod = await server.ssrLoadModule("/src/index.ts");
   return mod.default;
 }
 

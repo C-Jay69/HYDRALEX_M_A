@@ -5,6 +5,7 @@ export const analyses = sqliteTable("analyses", {
   userId: text("user_id"), // nullable for legacy — links to user.id
   filename: text("filename"),
   contractText: text("contract_text").notNull(),
+  contentHash: text("content_hash"), // SHA-256 of contractText for dedup
   status: text("status").notNull().default("pending"), // pending | analyzing | complete | error
   step: text("step"), // analyst | critic | adjudicator
   score: integer("score"),
