@@ -1,17 +1,16 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { Link } from "wouter";
 import {
   Users, BarChart3, FileText, ShieldAlert, Activity,
-  ChevronRight, Scale, TrendingUp, CheckCircle, XCircle,
-  Crown, RefreshCcw,
+  ChevronRight, TrendingUp, CheckCircle, XCircle,
+  Crown,
 } from "lucide-react";
 import { formatDate, getRiskColor } from "../lib/utils";
 import ScoreBadge from "../components/ScoreBadge";
 
-type Tab = "overview" | "users" | "analyses" | "audit";
+type Tab = "overview" | "users" | "analyses" | "audit" | "health";
 
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>("overview");
@@ -63,6 +62,18 @@ export default function AdminPage() {
     enabled: tab === "audit",
   });
 
+  const { data: healthData } = useQuery({
+    queryKey: ["admin-health"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/health", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("bearer_token") ?? ""}` },
+      });
+      return res.json();
+    },
+    enabled: tab === "health",
+    refetchInterval: tab === "health" ? 10000 : false,
+  });
+
   const { data: userDetailData } = useQuery({
     queryKey: ["admin-user-detail", selectedUser],
     queryFn: async () => {
@@ -96,6 +107,7 @@ export default function AdminPage() {
     { key: "users", label: "Users", icon: Users },
     { key: "analyses", label: "Analyses", icon: FileText },
     { key: "audit", label: "Audit Logs", icon: ShieldAlert },
+    { key: "health", label: "System Health", icon: Activity },
   ];
 
   if (statsLoading && tab === "overview") {
@@ -431,6 +443,49 @@ export default function AdminPage() {
               <p style={{ color: "var(--text-muted)", fontSize: "13px", textAlign: "center", padding: "40px" }}>
                 No audit events yet.
               </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* System Health */}
+      {tab === "health" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div style={{
+            background: "var(--bg-secondary)", border: "1px solid var(--border)",
+            borderRadius: "10px", padding: "24px",
+          }}>
+            <div style={{ fontFamily: "Poppins, sans-serif", fontWeight: 600, fontSize: "14px", marginBottom: "16px" }}>
+              System Status
+            </div>
+            {healthData ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div style={{
+                    width: "10px", height: "10px", borderRadius: "50%",
+                    background: (healthData as any).status === "ok" ? "var(--risk-low)" : "var(--risk-critical)",
+                  }} />
+                  <span style={{ fontWeight: 600, fontSize: "14px" }}>
+                    {(healthData as any).status === "ok" ? "All systems operational" : "Degraded"}
+                  </span>
+                </div>
+                {[
+                  ["Database", (healthData as any).db?.ok ? "Healthy" : "Error", (healthData as any).db?.ok],
+                  ["DB Latency", `${(healthData as any).db?.latencyMs ?? "—"}ms`, true],
+                  ["Uptime", `${Math.floor(((healthData as any).uptime ?? 0) / 3600)}h ${Math.floor((((healthData as any).uptime ?? 0) % 3600) / 60)}m`, true],
+                  ["Checked", (healthData as any).timestamp ? new Date((healthData as any).timestamp).toLocaleTimeString() : "—", true],
+                ].map(([label, value, ok]) => (
+                  <div key={String(label)} style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "10px 14px", background: "var(--bg-tertiary)", borderRadius: "6px", border: "1px solid var(--border)",
+                  }}>
+                    <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>{label}</span>
+                    <span style={{ fontSize: "13px", fontWeight: 500, color: ok ? "var(--text-primary)" : "var(--risk-critical)" }}>{String(value)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ color: "var(--text-muted)", fontSize: "13px" }}>Loading health data…</p>
             )}
           </div>
         </div>
