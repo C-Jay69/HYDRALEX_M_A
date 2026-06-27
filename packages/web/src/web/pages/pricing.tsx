@@ -9,11 +9,11 @@ const PLAN_META: Record<string, { icon: any; color: string; badge?: string; docs
     color: "#64748b",
     docs: "1 / month",
     features: [
-      "1 analysis per month",
-      "Triple-LLM pipeline",
+      "1 analysis per month (template only)",
+      "Explore UI, see sample results",
+      "Triple-LLM pipeline preview",
       "Risk scoring (0–100)",
       "Executive summary",
-      "Clause-by-clause breakdown",
     ],
   },
   professional: {
@@ -24,7 +24,7 @@ const PLAN_META: Record<string, { icon: any; color: string; badge?: string; docs
     features: [
       "10 analyses per month",
       "Everything in Free",
-      "Full Markdown report",
+      "Full pipeline, PDF export",
       "Buyer & Seller perspective",
       "30-day analysis history",
       "Email support",
@@ -37,9 +37,9 @@ const PLAN_META: Record<string, { icon: any; color: string; badge?: string; docs
     features: [
       "50 analyses per month",
       "Everything in Professional",
-      "Priority support",
       "90-day analysis history",
-      "Team collaboration (5 seats)",
+      "Priority support",
+      "5 team seats",
       "Advanced risk calibration",
     ],
   },
@@ -50,11 +50,11 @@ const PLAN_META: Record<string, { icon: any; color: string; badge?: string; docs
     features: [
       "Unlimited analyses",
       "Everything in Business",
-      "99.9% SLA",
+      "99.9% SLA guarantee",
+      "API access",
       "White-label reports",
       "SSO / SAML",
       "Dedicated onboarding",
-      "API access",
       "Custom data retention",
     ],
   },
@@ -116,9 +116,21 @@ export default function PricingPage() {
           Triple-layer AI analysis. Junior associate speed. Senior partner accuracy.
           Market-calibrated M&A risk scoring in under 5 minutes.
         </p>
-        <p style={{ color: "var(--text-muted)", fontSize: "12px" }}>
-          Annual billing saves 20%
-        </p>
+        <div style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "8px",
+          background: "rgba(212,168,67,0.08)",
+          border: "1px solid rgba(212,168,67,0.25)",
+          borderRadius: "20px",
+          padding: "5px 16px",
+          fontSize: "12px",
+          color: "var(--accent-gold)",
+          fontWeight: 600,
+          marginTop: "4px",
+        }}>
+          <Calendar size={12} /> Annual billing saves 20%
+        </div>
       </div>
 
       {/* Plans grid */}
@@ -295,29 +307,76 @@ export default function PricingPage() {
         })}
       </div>
 
-      {/* Value prop */}
+      {/* Pricing rationale */}
       <div style={{
-        maxWidth: "700px",
-        margin: "0 auto 80px",
+        maxWidth: "820px",
+        margin: "0 auto 60px",
         padding: "0 24px",
-        textAlign: "center",
       }}>
         <div style={{
           background: "var(--bg-secondary)",
           border: "1px solid var(--border)",
           borderRadius: "12px",
-          padding: "32px",
+          padding: "36px",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+          gap: "32px",
         }}>
-          <h3 style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700, fontSize: "1rem", color: "var(--text-primary)", marginBottom: "12px" }}>
-            Why not $99/month?
-          </h3>
-          <p style={{ color: "var(--text-muted)", fontSize: "13px", lineHeight: 1.7, margin: 0 }}>
-            A junior associate bills at $350–600/hour. M&A document review takes 8–20 hours per document — $3,000–$12,000 in associate time before client markup.
-            Professional at $499/month delivers the equivalent of <strong style={{ color: "var(--text-secondary)" }}>$30,000–$120,000</strong> in associate time.
-            Comparable platforms (Kira, Luminance, Harvey AI) charge $1,500–$10,000+/month.
-            Hydraforge enters competitively without signaling consumer-grade tooling to this market.
-          </p>
+          {/* Value prop */}
+          <div>
+            <h3 style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700, fontSize: "1rem", color: "var(--text-primary)", marginBottom: "12px" }}>
+              Why not $99/month?
+            </h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "13px", lineHeight: 1.7, margin: 0 }}>
+              A junior associate bills at <strong style={{ color: "var(--text-secondary)" }}>$350–600/hour</strong>. M&A document review takes 8–20 hours — <strong style={{ color: "var(--text-secondary)" }}>$3,000–$12,000</strong> per document before markup.
+              Professional at $499/month delivers the equivalent of <strong style={{ color: "var(--accent-gold)" }}>$30,000–$120,000</strong> in associate time.
+              Comparable platforms (Kira, Luminance, Harvey AI) charge $1,500–$10,000+/month.
+              Hydraforge enters competitively without signalling consumer-grade tooling to this market.
+            </p>
+          </div>
+          {/* Enterprise CTA */}
+          <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: "12px" }}>
+            <h3 style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700, fontSize: "1rem", color: "var(--text-primary)", marginBottom: "4px" }}>
+              Enterprise M&amp;A clients don't self-serve.
+            </h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "13px", lineHeight: 1.6, margin: 0 }}>
+              Large law firms and advisory teams need SLAs, SSO, white-label, and onboarding. Let's talk about what works for your firm.
+            </p>
+            <a
+              href="mailto:enterprise@hydraforge.com?subject=Enterprise Demo Request"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+                padding: "11px 22px",
+                background: "rgba(139,92,246,0.12)",
+                border: "1px solid rgba(139,92,246,0.4)",
+                borderRadius: "7px",
+                color: "#a78bfa",
+                fontFamily: "Poppins, sans-serif",
+                fontWeight: 600,
+                fontSize: "13px",
+                textDecoration: "none",
+                alignSelf: "flex-start",
+                cursor: "pointer",
+              }}
+            >
+              <Calendar size={13} /> Book a Demo
+            </a>
+          </div>
         </div>
+
+        {/* Quota note */}
+        <p style={{
+          textAlign: "center",
+          fontSize: "11px",
+          color: "var(--text-muted)",
+          marginTop: "16px",
+          lineHeight: 1.6,
+        }}>
+          Quota is enforced at the point of analysis submission. Hitting your limit returns HTTP 402 with an upgrade link. Annual billing at 20% discount available on all paid plans.
+        </p>
       </div>
 
       {/* Back nav */}

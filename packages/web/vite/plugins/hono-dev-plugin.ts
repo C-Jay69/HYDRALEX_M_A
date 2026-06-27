@@ -19,7 +19,8 @@ export default function honoDevPlugin(): Plugin {
           server.ssrFixStacktrace(err as Error);
           console.error("[hono-dev]", err);
           res.statusCode = 500;
-          res.end("Internal Server Error");
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: "Internal Server Error", detail: (err as Error)?.message ?? "Unknown error" }));
         }
       });
     },

@@ -2,10 +2,10 @@ import { Link } from "wouter";
 import { Scale, Shield, FileText, Zap, BarChart3, Users, ChevronRight, CheckCircle } from "lucide-react";
 
 const PLANS = [
-  { name: "Free", price: "0", period: "forever", features: ["3 document analyses/mo", "Buyer perspective", "PDF & text upload", "Risk score + report"], cta: "Get started free", href: "/sign-up", gold: false },
-  { name: "Pro", price: "499", period: "mo", features: ["30 analyses/mo", "Buyer & Seller perspectives", "Priority processing", "Full audit logs", "API access"], cta: "Start Pro", href: "/sign-up", gold: true },
-  { name: "Business", price: "1,299", period: "mo", features: ["90 analyses/mo", "Everything in Pro", "Team seats (5)", "Custom risk thresholds", "Dedicated support"], cta: "Start Business", href: "/sign-up", gold: false },
-  { name: "Enterprise", price: "3,500", period: "mo", features: ["300 analyses/mo", "Everything in Business", "Unlimited seats", "White-label option", "SLA guarantee"], cta: "Contact sales", href: "/sign-up", gold: false },
+  { name: "Free", price: "0", period: "forever", features: ["1 analysis/month (template only)", "Explore UI & sample results", "Triple-LLM pipeline preview", "Risk score + executive summary"], cta: "Get started free", href: "/sign-up", gold: false },
+  { name: "Professional", price: "499", period: "mo", features: ["10 analyses/month", "Full pipeline, PDF export", "Buyer & Seller perspectives", "30-day retention", "Email support"], cta: "Start Professional", href: "/sign-up", gold: true },
+  { name: "Business", price: "1,299", period: "mo", features: ["50 analyses/month", "Everything in Professional", "90-day retention", "Priority support", "5 team seats"], cta: "Start Business", href: "/sign-up", gold: false },
+  { name: "Enterprise", price: "Custom", period: "from $3,500/mo", features: ["Unlimited analyses", "Everything in Business", "99.9% SLA + API access", "White-label reports", "SSO/SAML, dedicated onboarding"], cta: "Book a Demo", href: "mailto:enterprise@hydraforge.com?subject=Enterprise Demo Request", gold: false },
 ];
 
 const FEATURES = [
