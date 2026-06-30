@@ -1,6 +1,6 @@
 import { hc } from "hono/client";
 import type { AppType } from "../../api";
-import { getToken } from "./auth";
+import { getToken } from "./auth.js";
 
 const client = hc<AppType>("/", {
   headers: () => {

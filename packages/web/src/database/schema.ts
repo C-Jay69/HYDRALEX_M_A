@@ -45,4 +45,4 @@ export const auditLogs = sqliteTable("audit_logs", {
     .$defaultFn(() => new Date()),
 });
 
-export * from "./auth-schema";
+export * from "./auth-schema.js";

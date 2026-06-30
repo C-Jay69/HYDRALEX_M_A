@@ -1,5 +1,5 @@
 import type { Context, Next } from "hono";
-import { auth } from "../auth";
+import { auth } from "../auth.js";
 
 /**
  * Populates c.get("user") from Bearer token or cookie session.

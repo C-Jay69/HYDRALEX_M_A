@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { auth } from "./auth";
-import { analyses } from "./routes/analyses";
-import { admin } from "./routes/admin";
-import { authMiddleware, requireAuth } from "./middleware/auth";
-import { db } from "./database";
-import { userMeta } from "./database/schema";
+import { auth } from "./auth.js";
+import { analyses } from "./routes/analyses.js";
+import { admin } from "./routes/admin.js";
+import { authMiddleware, requireAuth } from "./middleware/auth.js";
+import { db } from "./database.js";
+import { userMeta } from "./database/schema.js";
 import { eq } from "drizzle-orm";
 
 const app = new Hono()

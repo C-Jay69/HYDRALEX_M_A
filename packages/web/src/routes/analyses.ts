@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { db } from "../database";
-import * as schema from "../database/schema";
+import { db } from "../database.js";
+import * as schema from "../database/schema.js";
 import { eq, desc, and } from "drizzle-orm";
 import {
   getOpenRouterClient,
@@ -19,10 +19,10 @@ import {
   type ResolvedSuppression,
   type DealTypeState,
   stripScaffolding,
-} from "../lib/openrouter";
-import { authMiddleware, requireAuth } from "../middleware/auth";
+} from "../lib/openrouter.js";
+import { authMiddleware, requireAuth } from "../middleware/auth.js";
 import { Autumn } from "autumn-js";
-import { userMeta } from "../database/schema";
+import { userMeta } from "../database/schema.js";
 import { createHash } from "crypto";
 
 const autumn = new Autumn();

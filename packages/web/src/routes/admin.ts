@@ -1,8 +1,8 @@
 import { Hono } from "hono";
-import { db } from "../database";
-import * as schema from "../database/schema";
+import { db } from "../database.js";
+import * as schema from "../database/schema.js";
 import { eq, desc, count, and, gte } from "drizzle-orm";
-import { authMiddleware, requireAuth } from "../middleware/auth";
+import { authMiddleware, requireAuth } from "../middleware/auth.js";
 
 // Admin-only middleware
 const requireAdmin = async (c: any, next: any) => {
