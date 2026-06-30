@@ -4,7 +4,7 @@ dist/
 dist-electron/
 .env
 .env.*
-!.env.example
+.env.example
 __pycache__/
 *.pyc
 venv/
