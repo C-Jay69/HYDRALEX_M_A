@@ -1,3 +1,9 @@
-import app from "../src/index.js";
-console.log("Bridge: Successfully imported app from ../src/index.js");
-export default app;
+export default async function handler(request) {
+  return new Response(JSON.stringify({ 
+    message: "THE BRIDGE IS WORKING!", 
+    timestamp: new Date().toISOString(),
+    status: "SUCCESS" 
+  }), {
+    headers: { "Content-Type": "application/json" },
+  });
+}
