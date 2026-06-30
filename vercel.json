@@ -1,8 +1,9 @@
+
 {
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/packages/web/api/index.ts"
+      "destination": "/api/handler"
     }
   ]
 }
