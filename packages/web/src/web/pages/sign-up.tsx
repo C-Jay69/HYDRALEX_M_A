@@ -28,7 +28,7 @@ export default function SignUpPage() {
     if (res.error) {
       setError(res.error.message ?? "Could not create account");
     } else {
-      navigate("/");
+      navigate("/dashboard");
     }
   }
 
