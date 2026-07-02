@@ -84,9 +84,13 @@ export const analyses = new Hono()
 
     // Quota check (admins bypass)
     if (!(await isAdmin(user.id))) {
-      const { allowed } = await autumn.check({ customerId: user.id, featureId: "analyses" });
-      if (!allowed) {
-        return c.json({ error: "Monthly analysis quota reached. Upgrade your plan to continue.", upgrade: true }, 402);
+      try {
+        const { allowed } = await autumn.check({ customerId: user.id, featureId: "analyses" });
+        if (!allowed) {
+          return c.json({ error: "Monthly analysis quota reached. Upgrade your plan to continue.", upgrade: true }, 402);
+        }
+      } catch (e) {
+        console.error("Autumn Quota Check Failed (Bypassing):", e);
       }
     }
 
@@ -150,9 +154,13 @@ export const analyses = new Hono()
     const user = c.get("user") as any;
 
     if (!(await isAdmin(user.id))) {
-      const { allowed } = await autumn.check({ customerId: user.id, featureId: "analyses" });
-      if (!allowed) {
-        return c.json({ error: "Monthly analysis quota reached. Upgrade your plan to continue.", upgrade: true }, 402);
+      try {
+        const { allowed } = await autumn.check({ customerId: user.id, featureId: "analyses" });
+        if (!allowed) {
+          return c.json({ error: "Monthly analysis quota reached. Upgrade your plan to continue.", upgrade: true }, 402);
+        }
+      } catch (e) {
+        console.error("Autumn Quota Check Failed (Bypassing):", e);
       }
     }
 
