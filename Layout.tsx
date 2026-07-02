@@ -2,6 +2,23 @@ import { Link, useLocation } from "wouter";
 import { LayoutDashboard, FilePlus, Tag, Crown, LogOut, User } from "lucide-react";
 import { authClient, clearToken } from "../lib/auth";
 import { useQuery } from "@tanstack/react-query";
+import { AutumnProvider } from "autumn-js/react";
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body>
+        <AutumnProvider>
+          {children}
+        </AutumnProvider>
+      </body>
+    </html>
+  );
+}
 
 interface LayoutProps {
   children: React.ReactNode;
