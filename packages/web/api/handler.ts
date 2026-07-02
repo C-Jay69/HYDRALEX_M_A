@@ -1,11 +1,22 @@
+
 import app from "../src/index.js";
 
 export default async function handler(req, res) {
   try {
-    // 1. Convert Vercel's Node.js request to a Web Standard Request object
     const url = new URL(req.url, `https://${req.headers.host}`);
     
-    // We need to handle the body for POST/PUT requests
+    // DEBUG ENDPOINT: Only active for this troubleshooting phase
+    if (url.pathname === "/api/debug-env") {
+      const debugInfo = {
+        database_url_start: process.env.DATABASE_URL ? process.env.DATABASE_URL.substring(0, 15) + "..." : "MISSING",
+        auth_token_start: process.env.DATABASE_AUTH_TOKEN ? process.env.DATABASE_AUTH_TOKEN.substring(0, 15) + "..." : "MISSING",
+        better_auth_url: process.env.BETTER_AUTH_URL || "MISSING",
+        env: process.env.NODE_ENV
+      };
+      res.setHeader("Content-Type", "application/json");
+      return res.end(JSON.stringify(debugInfo, null, 2));
+    }
+
     let body = null;
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       body = await new Promise((resolve) => {
@@ -21,17 +32,11 @@ export default async function handler(req, res) {
       body: body,
     });
 
-    // 2. Pass the Web Request to the Hono app
     const response = await app.fetch(webRequest);
-
-    // 3. Convert the Web Response back to a Node.js response
     res.statusCode = response.status;
-    
-    // Copy headers
     response.headers.forEach((value, key) => {
       res.setHeader(key, value);
     });
-
     const text = await response.text();
     res.end(text);
   } catch (e) {
