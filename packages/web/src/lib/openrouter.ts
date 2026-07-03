@@ -48,6 +48,7 @@ Still flag all CRITICAL structural defects regardless of party — but frame ris
 // Analyst:     Gemini 2.5 Flash       — 1M ctx, Indemnity Hunter
 // Critic:      Gemini 2.5 Flash Lite  — 1M ctx, Economic Engine Hunter
 // Adjudicator: Gemini 2.0 Flash       — 1M ctx, Contradiction Hunter + final synthesis
+export const VERSION = "1.0.1-final-fix";
 export const MODELS = {
   analyst: "google/gemini-2.5-flash",
   critic: "google/gemini-2.5-flash-lite",
