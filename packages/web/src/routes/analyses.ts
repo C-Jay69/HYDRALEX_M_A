@@ -175,7 +175,7 @@ export const analyses = new Hono()
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
       try {
-        const { extractPdfText } = await import("../lib/pdf");
+        const { extractPdfText } = await import("../lib/pdf.js");
         contractText = await extractPdfText(buffer);
       } catch (err: any) {
         return c.json({ error: err.message ?? "Failed to parse PDF" }, 400);
