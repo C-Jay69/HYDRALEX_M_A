@@ -52,7 +52,7 @@ export const VERSION = "1.0.1-final-fix";
 export const MODELS = {
   analyst: "google/gemini-2.5-flash",
   critic: "google/gemini-2.5-flash-lite",
-  adjudicator: "google/gemini-2.0-flash-001",
+  adjudicator: "google/gemini-2.5-flash",
 };
 
 export function getOpenRouterClient() {
