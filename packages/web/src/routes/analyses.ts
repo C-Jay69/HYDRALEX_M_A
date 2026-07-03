@@ -138,7 +138,8 @@ export const analyses = new Hono()
       .returning();
 
     if (user) {
-      await autumn.track({ customerId: user.id, featureId: "analyses", value: 1 }).catch(() => {});
+      autumn.track({ customerId: user.id, featureId: "analyses", value: 1 })
+        .catch((e) => console.warn(`[Autumn] Tracking failed for ${user.id} (likely user not provisioned):`, e.message));
     }
 
     runPipeline(inserted.id, trimmed, perspective).catch(async (err) => {
@@ -222,7 +223,8 @@ export const analyses = new Hono()
       .returning();
 
     if (user) {
-      await autumn.track({ customerId: user.id, featureId: "analyses", value: 1 }).catch(() => {});
+      autumn.track({ customerId: user.id, featureId: "analyses", value: 1 })
+        .catch((e) => console.warn(`[Autumn] Tracking failed for ${user.id} (likely user not provisioned):`, e.message));
     }
 
     runPipeline(inserted.id, trimmed, uploadPerspective).catch(async (err) => {
