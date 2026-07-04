@@ -51,8 +51,8 @@ Still flag all CRITICAL structural defects regardless of party — but frame ris
 export const VERSION = "1.0.1-final-fix";
 export const MODELS = {
   analyst: "google/gemini-2.5-flash",
-  critic: "google/gemini-2.5-flash-lite",
-  adjudicator: "google/gemini-2.5-flash",
+  critic: "google/gemini-2.5-flash",
+  adjudicator: "google/gemma-4-31b-it:free",
 };
 
 export function getOpenRouterClient() {
