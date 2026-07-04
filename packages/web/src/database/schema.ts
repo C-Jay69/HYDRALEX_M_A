@@ -2,22 +2,43 @@ import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 
 export const analyses = sqliteTable("analyses", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  userId: text("user_id"), // nullable for legacy — links to user.id
+  projectId: integer("project_id"), // Link to the deal project
+  userId: text("user_id"),
   filename: text("filename"),
   contractText: text("contract_text").notNull(),
-  contentHash: text("content_hash"), // SHA-256 of contractText for dedup
-  status: text("status").notNull().default("pending"), // pending | analyzing | complete | error
-  step: text("step"), // analyst | critic | adjudicator
+  contentHash: text("content_hash"),
+  status: text("status").notNull().default("pending"),
+  step: text("step"),
   score: integer("score"),
-  riskLevel: text("risk_level"), // Low | Moderate | High | Critical
+  riskLevel: text("risk_level"),
   recommendation: text("recommendation"),
   executiveSummary: text("executive_summary"),
   reportMarkdown: text("report_markdown"),
   llm1Output: text("llm1_output"),
   llm2Output: text("llm2_output"),
   errorMessage: text("error_message"),
-  reviewPerspective: text("review_perspective").default("BUYER"), // BUYER | SELLER
+  reviewPerspective: text("review_perspective").default("BUYER"),
   createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const projects = sqliteTable("projects", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(), // e.g. "Project Apollo"
+  status: text("status").default("active"), // active | archived | completed
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const project_documents = sqliteTable("project_documents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull(),
+  analysisId: integer("analysis_id"), // Link to the processed text
+  filename: text("filename").notNull(),
+  uploadedAt: integer("uploaded_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
 });
