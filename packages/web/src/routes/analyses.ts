@@ -177,7 +177,11 @@ export const analyses = new Hono()
       const buffer = Buffer.from(arrayBuffer);
       try {
         const { extractPdfText } = await import("../lib/pdf.js");
-        contractText = await extractPdfText(buffer);
+        text = await extractPdfText(buffer);
+        if (text.trim().length < 200) {
+          console.warn("[PDF] Low-confidence extraction detected. Text too short.");
+          return c.json({ error: "PDF_UNREADABLE", message: "This PDF appears to be a scan or image. Please upload a text-based PDF, a .txt file, or a .docx version for accurate analysis." }, 422);
+        }
       } catch (err: any) {
         return c.json({ error: err.message ?? "Failed to parse PDF" }, 400);
       }
