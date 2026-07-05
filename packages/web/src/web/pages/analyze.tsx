@@ -22,7 +22,7 @@ export default function AnalyzePage() {
   const [perspective, setPerspective] = useState<Perspective>("BUYER");
   const [pastedText, setPastedText] = useState("");
   const [dragOver, setDragOver] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -41,19 +41,23 @@ export default function AnalyzePage() {
     },
   });
 
-  const submitFile = useMutation({
-    mutationFn: async (file: File) => {
+  const submitFiles = useMutation({
+    mutationFn: async (files: File[]) => {
       const formData = new FormData();
-      formData.append("file", file);
+      files.forEach((file) => {
+        formData.append("files", file);
+      });
+      formData.append("reviewPerspective", perspective);
+      
       const token = localStorage.getItem("bearer_token") ?? "";
       const res = await fetch("/api/analyses/upload", {
         method: "POST",
         body: formData,
         headers: {
-          "X-Review-Perspective": perspective,
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(token ? { Authorization: *** ${token}` } : {}),
         },
       });
+      
       if (!res.ok) {
         const err = await res.json();
         throw new Error((err as any).error ?? "Upload failed");
@@ -61,34 +65,45 @@ export default function AnalyzePage() {
       return res.json();
     },
     onSuccess: (data: any) => {
-      navigate(`/reports/${data.id}`);
+      // Navigate to the first analysis in the project
+      navigate(`/reports/${data.files[0].analysisId}`);
     },
     onError: (err: any) => {
       setError(err.message ?? "Upload failed");
     },
   });
 
-  const isPending = submitText.isPending || submitFile.isPending;
+  const isPending = submitText.isPending || submitFiles.isPending;
 
-  function handleFile(file: File) {
-    if (
-      !file.type.includes("pdf") &&
-      !file.type.includes("text") &&
-      !file.name.endsWith(".txt") &&
-      !file.name.endsWith(".pdf")
-    ) {
-      setError("Only .pdf or .txt files are supported");
-      return;
+  function handleFiles(files: FileList | null) {
+    if (!files) return;
+    const newFiles: File[] = [];
+    
+    for (const file of Array.from(files)) {
+      if (
+        !file.type.includes("pdf") &&
+        !file.type.includes("text") &&
+        !file.name.endsWith(".txt") &&
+        !file.name.endsWith(".pdf")
+      ) {
+        setError(`File ${file.name} is not supported. Only .pdf or .txt allowed.`);
+        return;
+      }
+      newFiles.push(file);
     }
+    
     setError(null);
-    setSelectedFile(file);
+    setSelectedFiles(prev => [...prev, ...newFiles]);
   }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
+    handleFiles(e.dataTransfer.files);
+  }
+
+  function removeFile(index: number) {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   }
 
   function handleSubmit() {
@@ -100,11 +115,11 @@ export default function AnalyzePage() {
       }
       submitText.mutate(pastedText.trim());
     } else {
-      if (!selectedFile) {
-        setError("Please select a file.");
+      if (selectedFiles.length === 0) {
+        setError("Please select at least one file.");
         return;
       }
-      submitFile.mutate(selectedFile);
+      submitFiles.mutate(selectedFiles);
     }
   }
 
@@ -121,16 +136,15 @@ export default function AnalyzePage() {
             marginBottom: "6px",
           }}
         >
-          New Contract Analysis
+          Deal Room Analysis
         </h1>
         <p style={{ color: "var(--text-muted)", fontSize: "13px" }}>
-          Submit an M&A contract for multi-agent AI risk assessment
+          Upload one or more contracts for comprehensive multi-agent risk assessment
         </p>
       </div>
 
       {/* Mode toggle + Perspective toggle row */}
       <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "24px", flexWrap: "wrap" }}>
-        {/* Mode toggle */}
         <div
           style={{
             display: "flex",
@@ -142,7 +156,7 @@ export default function AnalyzePage() {
           }}
         >
           {[
-            { id: "upload" as Mode, label: "Upload File", icon: Upload },
+            { id: "upload" as Mode, label: "Upload Files", icon: Upload },
             { id: "paste" as Mode, label: "Paste Text", icon: ClipboardPaste },
           ].map(({ id, label, icon: Icon }) => (
             <button
@@ -170,7 +184,6 @@ export default function AnalyzePage() {
           ))}
         </div>
 
-        {/* Perspective toggle */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span style={{ fontSize: "12px", color: "var(--text-muted)", fontFamily: "Poppins, sans-serif" }}>
             Reviewing as:
@@ -197,7 +210,7 @@ export default function AnalyzePage() {
                     : "transparent",
                   color: perspective === p
                     ? p === "BUYER" ? "#60a5fa" : "var(--accent-gold)"
-                    : "var(--text-muted)",
+                    : "var(--text-muted",
                   cursor: "pointer",
                   fontFamily: "Poppins, sans-serif",
                   fontWeight: perspective === p ? 700 : 400,
@@ -220,11 +233,11 @@ export default function AnalyzePage() {
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
           style={{
-            border: `2px dashed ${dragOver ? "var(--accent-gold)" : selectedFile ? "var(--risk-low)" : "var(--border)"}`,
+            border: `2px dashed ${dragOver ? "var(--accent-gold)" : selectedFiles.length > 0 ? "var(--risk-low)" : "var(--border)"}`,
             borderRadius: "10px",
             background: dragOver
               ? "var(--accent-gold-bg)"
-              : selectedFile
+              : selectedFiles.length > 0
               ? "rgba(34,197,94,0.05)"
               : "var(--bg-secondary)",
             padding: "48px 32px",
@@ -237,55 +250,69 @@ export default function AnalyzePage() {
             ref={fileInputRef}
             type="file"
             accept=".pdf,.txt"
-            aria-label="Upload contract file"
+            multiple
+            aria-label="Upload contract files"
             style={{ display: "none" }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleFile(file);
-            }}
+            onChange={(e) => handleFiles(e.target.files)}
           />
 
-          {selectedFile ? (
-            <div>
-              <CheckCircle
-                size={36}
-                color="var(--risk-low)"
-                style={{ margin: "0 auto 12px" }}
-              />
-              <div
-                style={{
-                  fontFamily: "Poppins, sans-serif",
-                  fontWeight: 600,
-                  color: "var(--text-primary)",
-                  marginBottom: "4px",
-                }}
-              >
-                {selectedFile.name}
-              </div>
-              <div style={{ color: "var(--text-muted)", fontSize: "12px", marginBottom: "16px" }}>
-                {(selectedFile.size / 1024).toFixed(1)} KB
-              </div>
+          {selectedFiles.length > 0 ? (
+            <div style={{ textAlign: "left", display: "flex", flexDirection: "column", gap: "8px", maxWidth: "400px", margin: "0 auto" }}>
+              {selectedFiles.map((file, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "8px 12px",
+                    background: "var(--bg-tertiary)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "6px",
+                    fontSize: "12px",
+                    fontFamily: "Poppins, sans-serif",
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden" }}>
+                    <FileText size={14} />
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</span>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeFile(i);
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "var(--text-muted)",
+                      cursor: "pointer",
+                      padding: "2px",
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedFile(null);
+                onClick={() => {
+                  setSelectedFiles([]);
                   if (fileInputRef.current) fileInputRef.current.value = "";
                 }}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  background: "var(--bg-tertiary)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-secondary)",
-                  borderRadius: "5px",
-                  padding: "5px 12px",
+                  marginTop: "12px",
+                  background: "none",
+                  border: "none",
+                  color: "var(--text-muted)",
                   cursor: "pointer",
                   fontSize: "12px",
-                  margin: "0 auto",
+                  textDecoration: "underline",
+                  textAlign: "center",
+                  width: "100%",
                 }}
               >
-                <X size={12} /> Remove
+                Clear all files
               </button>
             </div>
           ) : (
@@ -310,7 +337,7 @@ export default function AnalyzePage() {
                   padding: 0,
                 }}
               >
-                Drop file here or click to browse
+                Drop files here or click to browse
               </button>
               <div style={{ color: "var(--text-muted)", fontSize: "12px" }}>
                 Supports .pdf and .txt files
@@ -340,8 +367,6 @@ export default function AnalyzePage() {
               lineHeight: 1.6,
               padding: "16px",
               resize: "vertical",
-              outline: "none",
-              transition: "border-color 0.15s",
             }}
             onFocus={(e) => {
               e.currentTarget.style.borderColor = "rgba(212,168,67,0.4)";
@@ -389,12 +414,12 @@ export default function AnalyzePage() {
           display: "flex",
           gap: "20px",
           flexWrap: "wrap",
-        }}
-      >
+        }
+      }}
         {[
           { step: "1", label: "Analyst", desc: "First-pass review", model: "Gemini 2.5 Flash" },
-          { step: "2", label: "Critic", desc: "Adversarial audit", model: "Gemini 2.5 Flash Lite" },
-          { step: "3", label: "Adjudicator", desc: "Final verdict + score", model: "Gemini 2.0 Flash" },
+          { step: "2", label: "Critic", desc: "Adversarial audit", model: "Gemini 2.5 Flash" },
+          { step: "3", label: "Adjudicator", desc: "Final verdict + score", model: "Gemma 4 31B" },
         ].map(({ step, label, desc, model }) => (
           <div key={step} style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: "180px" }}>
             <div
@@ -417,7 +442,7 @@ export default function AnalyzePage() {
               {step}
             </div>
             <div>
-              <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--text-primary)" }}>{label}</div>
+              <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--text-primary)" }, { model: "Gemini 2.5 Flash" }}>{label}</div>
               <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{desc} · {model}</div>
             </div>
           </div>
@@ -437,7 +462,6 @@ export default function AnalyzePage() {
           border: "none",
           borderRadius: "7px",
           padding: "12px 28px",
-          fontFamily: "Poppins, sans-serif",
           fontWeight: 700,
           fontSize: "14px",
           cursor: isPending ? "not-allowed" : "pointer",
@@ -449,7 +473,7 @@ export default function AnalyzePage() {
         {isPending ? (
           <>
             <Loader size={16} className="spinner" />
-            Starting Analysis…
+            Running Deal Room Analysis...
           </>
         ) : (
           <>
@@ -458,6 +482,10 @@ export default function AnalyzePage() {
           </>
         )}
       </button>
+
+      <div style={{ textAlign: "center", marginTop: "24px", fontSize: "11px", color: "var(--text-muted)", fontFamily: "Poppins, sans-serif" }}>
+        System Version: 1.0.2-MultiDoc
+      </div>
     </div>
   );
 }
