@@ -18,6 +18,15 @@ export const analyses = sqliteTable("analyses", {
   llm2Output: text("llm2_output"),
   errorMessage: text("error_message"),
   reviewPerspective: text("review_perspective").default("BUYER"),
+  // Multi-document support for cross-document consistency analysis.
+  // JSON array of { filename, text } for every uploaded/pasted document.
+  documents: text("documents"),
+  // Structured outputs from the deterministic analysis modules (Stages 3/6/7/8/9).
+  kgData: text("kg_data"),
+  crossDocData: text("cross_doc_data"),
+  redFlagData: text("red_flag_data"),
+  regulatoryData: text("regulatory_data"),
+  litigationData: text("litigation_data"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

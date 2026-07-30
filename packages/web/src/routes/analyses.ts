@@ -20,6 +20,19 @@ import {
   type DealTypeState,
   stripScaffolding,
 } from "../lib/openrouter.js";
+import {
+  runKnowledgeGraph,
+  renderKnowledgeGraph,
+  runCrossDocConsistency,
+  renderCrossDoc,
+  runRedFlagEngine,
+  renderRedFlag,
+  runRegulatoryAnalysis,
+  renderRegulatory,
+  runLitigationRisk,
+  renderLitigation,
+  type DocInput,
+} from "../lib/analysis-modules.js";
 import { authMiddleware, requireAuth } from "../middleware/auth.js";
 import { Autumn } from "autumn-js";
 import { userMeta } from "../database/schema.js";
@@ -107,7 +120,8 @@ export const analyses = new Hono()
 
     const trimmed = contractText.trim();
     const perspective: ReviewPerspective = reviewPerspective === "SELLER" ? "SELLER" : "BUYER";
-    const contentHash = sha256(trimmed + "|" + perspective);
+    const documents: DocInput[] = [{ filename: filename ?? "Pasted Contract", text: trimmed }];
+    const contentHash = sha256(documents.map((d) => d.text).join("||") + "|" + perspective);
 
     // SHA-256 dedup: return existing completed analysis if same content + perspective
     const [existing] = await db
@@ -130,6 +144,7 @@ export const analyses = new Hono()
         userId: user.id,
         filename: filename ?? "Pasted Contract",
         contractText: trimmed,
+        documents: JSON.stringify(documents),
         contentHash,
         status: "analyzing",
         step: "analyst",
@@ -142,7 +157,7 @@ export const analyses = new Hono()
         .catch((e) => console.warn(`[Autumn] Tracking failed for ${user.id} (likely user not provisioned):`, e.message));
     }
 
-    runPipeline(inserted.id, trimmed, perspective).catch(async (err) => {
+    runPipeline(inserted.id, documents, perspective).catch(async (err) => {
       console.error("Pipeline error:", err);
       await db.update(schema.analyses).set({ status: "error", errorMessage: err.message }).where(eq(schema.analyses.id, inserted.id));
     });
@@ -166,37 +181,33 @@ export const analyses = new Hono()
     }
 
     const formData = await c.req.formData();
-    const file = formData.get("file") as File | null;
-    if (!file) return c.json({ error: "No file provided" }, 400);
+    const files = (formData.getAll("file") as (File | null)[]).filter(Boolean) as File[];
+    if (files.length === 0) return c.json({ error: "No file provided" }, 400);
 
-    let contractText = "";
-    const filename = file.name;
-
-    if (file.type === "application/pdf" || filename.endsWith(".pdf")) {
-      const arrayBuffer = await file.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
+    const documents: DocInput[] = [];
+    for (const file of files) {
+      let text: string;
       try {
-        const { extractPdfText } = await import("../lib/pdf.js");
-        text = await extractPdfText(buffer);
-        if (text.trim().length < 200) {
-          console.warn("[PDF] Low-confidence extraction detected. Text too short.");
-          return c.json({ error: "PDF_UNREADABLE", message: "This PDF appears to be a scan or image. Please upload a text-based PDF, a .txt file, or a .docx version for accurate analysis." }, 422);
-        }
+        text = await extractFileText(file);
       } catch (err: any) {
-        return c.json({ error: err.message ?? "Failed to parse PDF" }, 400);
+        const isUnreadable = err.message === "PDF_UNREADABLE";
+        return c.json(
+          isUnreadable
+            ? { error: "PDF_UNREADABLE", message: "This PDF appears to be a scan or image. Please upload a text-based PDF, a .txt file, or a .docx version for accurate analysis." }
+            : { error: err.message ?? "Failed to parse file" },
+          isUnreadable ? 422 : 400
+        );
       }
-    } else {
-      contractText = await file.text();
+      if (text.trim().length < 100) {
+        return c.json({ error: `File '${file.name}' contains insufficient extractable text.` }, 400);
+      }
+      documents.push({ filename: file.name, text: text.trim() });
     }
 
-    if (!contractText || contractText.trim().length < 100) {
-      return c.json({ error: "Could not extract sufficient text from file" }, 400);
-    }
-
-    const trimmed = contractText.trim();
+    const primary = documents[0];
     const perspectiveHeader = c.req.header("X-Review-Perspective");
     const uploadPerspective: ReviewPerspective = perspectiveHeader === "SELLER" ? "SELLER" : "BUYER";
-    const contentHash = sha256(trimmed + "|" + uploadPerspective);
+    const contentHash = sha256(documents.map((d) => d.text).join("||") + "|" + uploadPerspective);
 
     // Dedup check
     const [existing] = await db
@@ -217,8 +228,9 @@ export const analyses = new Hono()
       .insert(schema.analyses)
       .values({
         userId: user.id,
-        filename,
-        contractText: trimmed,
+        filename: primary.filename,
+        contractText: primary.text,
+        documents: JSON.stringify(documents),
         contentHash,
         status: "analyzing",
         step: "analyst",
@@ -231,7 +243,7 @@ export const analyses = new Hono()
         .catch((e) => console.warn(`[Autumn] Tracking failed for ${user.id} (likely user not provisioned):`, e.message));
     }
 
-    runPipeline(inserted.id, trimmed, uploadPerspective).catch(async (err) => {
+    runPipeline(inserted.id, documents, uploadPerspective).catch(async (err) => {
       console.error("Pipeline error:", err);
       await db.update(schema.analyses).set({ status: "error", errorMessage: err.message }).where(eq(schema.analyses.id, inserted.id));
     });
@@ -276,7 +288,26 @@ async function withRetry<T>(fn: () => Promise<T>, label: string, maxAttempts = 4
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function runPipeline(id: number, contractText: string, perspective: ReviewPerspective = "BUYER") {
+/** Extract text from an uploaded File. Throws with a clear message on failure. */
+async function extractFileText(file: File): Promise<string> {
+  const name = file.name.toLowerCase();
+  if (file.type === "application/pdf" || name.endsWith(".pdf")) {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    try {
+      const { extractPdfText } = await import("../lib/pdf.js");
+      const text = await extractPdfText(buffer);
+      if (text.trim().length < 200) throw new Error("PDF_UNREADABLE");
+      return text;
+    } catch (err: any) {
+      if (err.message === "PDF_UNREADABLE") throw err;
+      throw new Error(err.message ?? "Failed to parse PDF");
+    }
+  }
+  return await file.text();
+}
+
+async function runPipeline(id: number, documents: DocInput[], perspective: ReviewPerspective = "BUYER") {
+  const contractText = documents[0]?.text ?? "";
   const client = getOpenRouterClient();
   const _pipelineStart = Date.now();
 
@@ -382,6 +413,48 @@ async function runPipeline(id: number, contractText: string, perspective: Review
     console.warn("[RECONCILER] Could not run cross-layer reconciliation:", err);
   }
 
+  // ── Deterministic analysis modules (Stages 3/6/7/8/9) ───────────────────────
+  let kgData: unknown = null;
+  let crossDocData: unknown = null;
+  let redFlagData: unknown = null;
+  let regData: unknown = null;
+  let litData: unknown = null;
+  const moduleSections: string[] = [];
+  try {
+    const kg = runKnowledgeGraph(contractText);
+    kgData = kg;
+
+    const cross = runCrossDocConsistency(documents);
+    crossDocData = cross;
+
+    const rf = runRedFlagEngine(contractText);
+    redFlagData = rf;
+
+    const reg = runRegulatoryAnalysis(contractText);
+    regData = reg;
+
+    const litCtx = {
+      hasIndemnificationCap: /\bcap\b/i.test(contractText) && /indemnif/i.test(contractText),
+      hasEscrow: /\bescrow\b/i.test(contractText),
+      hasRWI: /\brwi\b|representations\s+and\s+warranties\s+insurance/i.test(contractText),
+      hasDisclosureSchedules: /\bschedule\b|\bdisclosure\s+schedules?\b/i.test(contractText),
+      hasFinancialStatements: /\bfinancial\s+statements?\b/i.test(contractText),
+      hasRegulatoryFilings: /\bhsr\b|\bcfius\b|\bregulatory\s+filing/i.test(contractText),
+    };
+    const lit = runLitigationRisk(contractText, litCtx);
+    litData = lit;
+
+    moduleSections.push(renderRegulatory(reg));
+    moduleSections.push(renderCrossDoc(cross));
+    moduleSections.push(renderLitigation(lit));
+    moduleSections.push(renderKnowledgeGraph(kg));
+    moduleSections.push(renderRedFlag(rf));
+
+    reportMarkdown += "\n\n" + moduleSections.join("\n");
+  } catch (err) {
+    console.error("[MODULES] analysis-module error (non-fatal):", err);
+  }
+
   await db.update(schema.analyses).set({
     status: "complete",
     step: null,
@@ -390,5 +463,10 @@ async function runPipeline(id: number, contractText: string, perspective: Review
     riskLevel: meta.riskLevel,
     recommendation: meta.recommendation,
     executiveSummary: meta.executiveSummary,
+    kgData: kgData ? JSON.stringify(kgData) : null,
+    crossDocData: crossDocData ? JSON.stringify(crossDocData) : null,
+    redFlagData: redFlagData ? JSON.stringify(redFlagData) : null,
+    regulatoryData: regData ? JSON.stringify(regData) : null,
+    litigationData: litData ? JSON.stringify(litData) : null,
   }).where(eq(schema.analyses.id, id));
 }

@@ -4,6 +4,7 @@ import { auth } from "./auth.js";
 import { analyses } from "./routes/analyses.js";
 import { admin } from "./routes/admin.js";
 import { authMiddleware, requireAuth } from "./middleware/auth.js";
+import { rateLimit, keyByUser, GENERAL_PER_MIN, AUTH_PER_MIN, ANALYSIS_PER_MIN } from "./middleware/ratelimit.js";
 import { db } from "./database.js";
 import { userMeta } from "./database/schema.js";
 import { eq } from "drizzle-orm";
@@ -16,6 +17,12 @@ const app = new Hono()
       exposeHeaders: ["set-auth-token"],
     })
   )
+  // Global rate limit: 60 requests/min per user (or IP) across all API routes.
+  .use("*", rateLimit({ windowMs: 60_000, max: GENERAL_PER_MIN }))
+  // Stricter limit on auth endpoints to blunt credential-stuffing / brute force.
+  .use("/api/auth/*", rateLimit({ windowMs: 60_000, max: AUTH_PER_MIN, errorMessage: "Too many authentication attempts. Please wait a minute." }))
+  // Analysis creation is the most expensive operation — tighten further.
+  .use("/api/analyses", rateLimit({ windowMs: 60_000, max: ANALYSIS_PER_MIN, keyFrom: (c) => `${keyByUser(c)}:analysis`, errorMessage: "Analysis rate limit reached. Please wait before submitting another document." }))
   .on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw))
   .basePath("api")
   .get("/health", (c) => c.json({ status: "ok", ts: Date.now() }, 200))
