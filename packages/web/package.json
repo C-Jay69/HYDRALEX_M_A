@@ -34,7 +34,7 @@
     "marked": "^18.0.4",
     "openai": "^6.39.0",
     "pdf-parse": "^2.4.5",
-    "pdfjs-dist": "^5.7.284",
+    "pdfjs-dist": "^6.2.108",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-hook-form": "^7.71.2",
