@@ -37,12 +37,6 @@ export default function AnalyzePage() {
         },
         body: JSON.stringify({ contractText, filename: "Pasted Contract", reviewPerspective: perspective }),
       });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as any).error ?? "Failed to submit");
-      }
-
       return res.json();
     },
     onSuccess: (data: any) => {
@@ -54,63 +48,91 @@ export default function AnalyzePage() {
   });
 
   const submitFiles = useMutation({
-    mutationFn: async (files: File[]) => {
-      const formData = new FormData();
-      files.forEach((file) => {
-        formData.append("files", file);
-      });
-      formData.append("reviewPerspective", perspective);
-      
-      const token = localStorage.getItem("bearer_token") ?? "";
-      const res = await fetch("/api/analyses/upload", {
-        method: "POST",
-        body: formData,
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-      
-      if (!res.ok) {
+  mutationFn: async (files: File[]) => {
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append("files", file, file.name);
+    });
+    formData.append("reviewPerspective", perspective);
+    
+    const token = localStorage.getItem("bearer_token") ?? "";
+    
+    const res = await fetch("/api/analyses/upload", {
+      method: "POST",
+      body: formData,
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    
+    if (!res.ok) {
+      let errorMessage = "Upload failed";
+      try {
         const err = await res.json();
-        throw new Error((err as any).error ?? "Upload failed");
+        errorMessage = err.error || err.message || errorMessage;
+      } catch (e) {
+        const text = await res.text();
+        if (text) errorMessage = text;
       }
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      // Navigate to the first analysis in the project
+      throw new Error(errorMessage);
+    }
+    return res.json();
+  },
+  onSuccess: (data: any) => {
+    // The response structure might be different
+    console.log("Upload response:", data); // Debug log
+    
+    if (data && data.files && data.files.length > 0) {
+      // Navigate to the first analysis
       navigate(`/reports/${data.files[0].analysisId}`);
-    },
-    onError: (err: any) => {
-      setError(err.message ?? "Upload failed");
-    },
-  });
+    } else if (data && data.id) {
+      // Direct analysis ID
+      navigate(`/reports/${data.id}`);
+    } else {
+      setError("Files uploaded but no analysis ID returned");
+    }
+  },
+  onError: (err: any) => {
+    console.error("Upload error:", err); // Debug log
+    setError(err.message ?? "Upload failed");
+  },
+});
 
   const isPending = submitText.isPending || submitFiles.isPending;
 
   function handleFiles(files: FileList | null) {
-    if (!files) return;
-    const newFiles: File[] = [];
-    
-    for (const file of Array.from(files)) {
-      if (
-        !file.type.includes("pdf") &&
-        !file.type.includes("text") &&
-        !file.name.endsWith(".txt") &&
-        !file.name.endsWith(".pdf")
-      ) {
-        setError(`File ${file.name} is not supported. Only .pdf or .txt allowed.`);
-        return;
-      }
-      newFiles.push(file);
-    }
-    
-    setError(null);
-    setSelectedFiles(prev => [...prev, ...newFiles]);
+  if (!files) {
+    setError("No files selected");
+    return;
   }
+  
+  const newFiles: File[] = [];
+  const allowedTypes = ['application/pdf', 'text/plain'];
+  const allowedExtensions = ['.pdf', '.txt'];
+  
+  for (const file of Array.from(files)) {
+    // Check by MIME type
+    const isAllowedType = allowedTypes.some(type => file.type.includes(type));
+    // Check by extension
+    const isAllowedExtension = allowedExtensions.some(ext => 
+      file.name.toLowerCase().endsWith(ext)
+    );
+    
+    if (!isAllowedType && !isAllowedExtension) {
+      setError(`File "${file.name}" is not supported. Only .pdf or .txt allowed.`);
+      return;
+    }
+    newFiles.push(file);
+  }
+  
+  setError(null);
+  setSelectedFiles(prev => [...prev, ...newFiles]);
+  console.log("Selected files:", newFiles); // Debug log
+}
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
-    setDragOver(false);
+        setDragOver(false);
     handleFiles(e.dataTransfer.files);
   }
 
@@ -119,21 +141,23 @@ export default function AnalyzePage() {
   }
 
   function handleSubmit() {
-    setError(null);
-    if (mode === "paste") {
-      if (pastedText.trim().length < 100) {
-        setError("Please paste a contract with at least 100 characters.");
-        return;
-      }
-      submitText.mutate(pastedText.trim());
-    } else {
-      if (selectedFiles.length === 0) {
-        setError("Please select at least one file.");
-        return;
-      }
-      submitFiles.mutate(selectedFiles);
+  setError(null);
+  if (mode === "paste") {
+    if (pastedText.trim().length < 100) {
+      setError("Please paste a contract with at least 100 characters.");
+      return;
     }
+    submitText.mutate(pastedText.trim());
+  } else {
+    if (selectedFiles.length === 0) {
+      setError("Please select at least one file.");
+      return;
+    }
+    console.log("Submitting files:", selectedFiles); // Debug log
+    console.log("Perspective:", perspective); // Debug log
+    submitFiles.mutate(selectedFiles);
   }
+}
 
   return (
     <div style={{ padding: "32px", maxWidth: "800px", margin: "0 auto" }}>
