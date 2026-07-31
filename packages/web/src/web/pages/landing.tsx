@@ -30,7 +30,7 @@ export default function LandingPage() {
         position: "sticky", top: 0, zIndex: 100,
       }}>
         <div style={{ display: "flex", alignItems: "center" }}>
-          <img src="/logo.png" alt="HydraForge" style={{ height: "36px", width: "auto" }} />
+          <img src="/logo_png" alt="HydraForge" style={{ height: "36px", width: "auto" }} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <Link to="/sign-in">

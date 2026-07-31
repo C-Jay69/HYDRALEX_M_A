@@ -39,7 +39,7 @@ export default function SignInPage() {
       <div style={{ width: "100%", maxWidth: "400px" }}>
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: "36px" }}>
-          <img src="/logo.png" alt="HydraForge" style={{ width: "160px", height: "auto", marginBottom: "20px" }} />
+          <img src="/logo_png" alt="HydraForge" style={{ width: "160px", height: "auto", marginBottom: "20px" }} />
           <h1 style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700, fontSize: "1.5rem", color: "var(--text-primary)", marginBottom: "6px" }}>
             Sign in to HydraForge
           </h1>

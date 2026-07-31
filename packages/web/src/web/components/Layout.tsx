@@ -51,7 +51,7 @@ export default function Layout({ children }: LayoutProps) {
         <div style={{ padding: "20px 16px 16px", borderBottom: "1px solid var(--border)" }}>
           <Link to="/dashboard">
             <img
-              src="/logo.png"
+              src="/logo_png"
               alt="HydraForge"
               style={{ width: "140px", height: "auto", display: "block" }}
             />

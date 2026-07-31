@@ -13,6 +13,7 @@ const server = new Hono()
   // Static assets from Vite build
   .use("/assets/*", serveStatic({ root: "./dist" }))
   .use("/logo.png", serveStatic({ root: "./dist" }))
+  .use("/logo_png", serveStatic({ root: "./dist" }))
   .use("/favicon.ico", serveStatic({ root: "./dist" }))
   .use("/favicon.png", serveStatic({ root: "./dist" }))
   .use("/runable.js", serveStatic({ root: "./dist" }))
