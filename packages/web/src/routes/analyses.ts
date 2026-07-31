@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { db } from "../database.js";
+import { writeAudit } from "../middleware/audit.js";
 import * as schema from "../database/schema.js";
 import { eq, desc, and } from "drizzle-orm";
 import {
@@ -313,17 +314,23 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
 
   // Step 1: Analyst
   await db.update(schema.analyses).set({ step: "analyst" }).where(eq(schema.analyses.id, id));
+  const llm1Start = Date.now();
   const llm1Raw = await withRetry(() => runAnalyst(client, contractText, perspective), "Analyst");
+  await writeAudit({ action: "analyst", resourceType: "analysis", resourceId: id, metadata: { model: "analyst", status: "complete", ms: Date.now() - llm1Start, perspective } });
   await db.update(schema.analyses).set({ llm1Output: llm1Raw, step: "critic" }).where(eq(schema.analyses.id, id));
   await sleep(10000);
 
   // Step 2: Critic
+  const llm2Start = Date.now();
   const llm2Raw = await withRetry(() => runCritic(client, contractText, llm1Raw, perspective), "Critic");
+  await writeAudit({ action: "critic", resourceType: "analysis", resourceId: id, metadata: { model: "critic", status: "complete", ms: Date.now() - llm2Start } });
   await db.update(schema.analyses).set({ llm2Output: llm2Raw, step: "adjudicator" }).where(eq(schema.analyses.id, id));
   await sleep(15000);
 
   // Step 3: Adjudicator
+  const adjStart = Date.now();
   let reportMarkdown = await withRetry(() => runAdjudicator(client, llm1Raw, llm2Raw, contractText, perspective), "Adjudicator");
+  await writeAudit({ action: "adjudicator", resourceType: "analysis", resourceId: id, metadata: { model: "adjudicator", status: "complete", ms: Date.now() - adjStart } });
   console.log(`[LLM TIMING] Total pipeline (LLM net + 25s sleeps): ${Date.now() - _pipelineStart}ms`);
 
   // Scaffolding leak guard
@@ -423,15 +430,19 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
   try {
     const kg = runKnowledgeGraph(contractText);
     kgData = kg;
+    await writeAudit({ action: "knowledge_graph", resourceType: "analysis", resourceId: id, metadata: { nodes: kg.summary.totalNodes, edges: kg.summary.totalEdges } });
 
     const cross = runCrossDocConsistency(documents);
     crossDocData = cross;
+    await writeAudit({ action: "cross_doc", resourceType: "analysis", resourceId: id, metadata: { documents: documents.length, findings: cross.findings.length } });
 
     const rf = runRedFlagEngine(contractText);
     redFlagData = rf;
+    await writeAudit({ action: "red_flag", resourceType: "analysis", resourceId: id, metadata: { flags: rf.flags.length } });
 
     const reg = runRegulatoryAnalysis(contractText);
     regData = reg;
+    await writeAudit({ action: "regulatory", resourceType: "analysis", resourceId: id, metadata: { frameworks: reg.frameworks.length } });
 
     const litCtx = {
       hasIndemnificationCap: /\bcap\b/i.test(contractText) && /indemnif/i.test(contractText),
@@ -443,6 +454,7 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
     };
     const lit = runLitigationRisk(contractText, litCtx);
     litData = lit;
+    await writeAudit({ action: "litigation", resourceType: "analysis", resourceId: id, metadata: { areas: lit.areas.length } });
 
     moduleSections.push(renderRegulatory(reg));
     moduleSections.push(renderCrossDoc(cross));
