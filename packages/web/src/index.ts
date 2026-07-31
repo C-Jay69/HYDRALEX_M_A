@@ -9,12 +9,24 @@ import { db } from "./database.js";
 import { userMeta } from "./database/schema.js";
 import { eq } from "drizzle-orm";
 
+const frontendUrl = 
+  (globalThis as any).process?.env?.FRONTEND_URL ?? 
+  "http://localhost:5173";
+
 const app = new Hono()
   .use(
     cors({
-      origin: process.env.FRONTEND_URL ?? "http://localhost:5173",
+      origin: [
+        frontendUrl,
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+      ],
       credentials: true,
       exposeHeaders: ["set-auth-token"],
+      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "Authorization"],
     })
   )
   // Global rate limit: 60 requests/min per user (or IP) across all API routes.
@@ -28,7 +40,7 @@ const app = new Hono()
   .get("/health", (c) => c.json({ status: "ok", ts: Date.now() }, 200))
   // Current user profile + isAdmin flag
   .get("/me", authMiddleware, requireAuth, async (c) => {
-    const user = c.get("user") as any;
+    const user = (c as any).get("user") as any;
     const [meta] = await db.select().from(userMeta).where(eq(userMeta.userId, user.id)).limit(1);
     return c.json({
       id: user.id,
