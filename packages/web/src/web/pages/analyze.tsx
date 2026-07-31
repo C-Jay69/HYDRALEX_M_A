@@ -51,7 +51,7 @@ export default function AnalyzePage() {
   mutationFn: async (files: File[]) => {
     const formData = new FormData();
     files.forEach((file) => {
-      formData.append("files", file, file.name);
+      formData.append("file", file, file.name); // ✅ Changed to "file"
     });
     formData.append("reviewPerspective", perspective);
     
@@ -79,21 +79,15 @@ export default function AnalyzePage() {
     return res.json();
   },
   onSuccess: (data: any) => {
-    // The response structure might be different
-    console.log("Upload response:", data); // Debug log
-    
-    if (data && data.files && data.files.length > 0) {
-      // Navigate to the first analysis
-      navigate(`/reports/${data.files[0].analysisId}`);
-    } else if (data && data.id) {
-      // Direct analysis ID
+    console.log("Upload response:", data);
+    if (data && data.id) {
       navigate(`/reports/${data.id}`);
     } else {
       setError("Files uploaded but no analysis ID returned");
     }
   },
   onError: (err: any) => {
-    console.error("Upload error:", err); // Debug log
+    console.error("Upload error:", err);
     setError(err.message ?? "Upload failed");
   },
 });
