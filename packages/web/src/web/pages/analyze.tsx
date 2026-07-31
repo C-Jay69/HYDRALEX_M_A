@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { api } from "../lib/api";
+import { api } from "../lib/api.js";
 import {
   Upload,
   FileText,
@@ -28,9 +28,21 @@ export default function AnalyzePage() {
 
   const submitText = useMutation({
     mutationFn: async (contractText: string) => {
-      const res = await api.analyses.$post({
-        json: { contractText, filename: "Pasted Contract", reviewPerspective: perspective },
+      const token = localStorage.getItem("bearer_token") ?? "";
+      const res = await fetch("/api/analyses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ contractText, filename: "Pasted Contract", reviewPerspective: perspective }),
       });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error ?? "Failed to submit");
+      }
+
       return res.json();
     },
     onSuccess: (data: any) => {
@@ -54,7 +66,7 @@ export default function AnalyzePage() {
         method: "POST",
         body: formData,
         headers: {
-          ...(token ? { Authorization: *** ${token}` } : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
       
@@ -210,7 +222,7 @@ export default function AnalyzePage() {
                     : "transparent",
                   color: perspective === p
                     ? p === "BUYER" ? "#60a5fa" : "var(--accent-gold)"
-                    : "var(--text-muted",
+                    : "var(--text-muted)",
                   cursor: "pointer",
                   fontFamily: "Poppins, sans-serif",
                   fontWeight: perspective === p ? 700 : 400,
@@ -414,8 +426,8 @@ export default function AnalyzePage() {
           display: "flex",
           gap: "20px",
           flexWrap: "wrap",
-        }
-      }}
+        }}
+      >
         {[
           { step: "1", label: "Analyst", desc: "First-pass review", model: "Gemini 2.5 Flash" },
           { step: "2", label: "Critic", desc: "Adversarial audit", model: "Gemini 2.5 Flash" },
@@ -442,7 +454,7 @@ export default function AnalyzePage() {
               {step}
             </div>
             <div>
-              <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--text-primary)" }, { model: "Gemini 2.5 Flash" }}>{label}</div>
+              <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--text-primary)" }}>{label}</div>
               <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{desc} · {model}</div>
             </div>
           </div>
