@@ -282,7 +282,7 @@ export const analyses = new Hono()
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-async function withRetry<T>(fn: () => Promise<T>, label: string, maxAttempts = 4): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, label: string, maxAttempts = 6): Promise<T> {
   let lastError: any;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -297,7 +297,8 @@ async function withRetry<T>(fn: () => Promise<T>, label: string, maxAttempts = 4
         err?.message?.toLowerCase().includes("too many requests");
 
       if (!is429 || attempt === maxAttempts) throw err;
-      const waitMs = 15000 * Math.pow(2, attempt - 1);
+      // Exponential backoff starting at 30 seconds
+      const waitMs = 30000 * Math.pow(2, attempt - 1);
       console.warn(`[${label}] 429 rate limit — attempt ${attempt}/${maxAttempts}, retrying in ${waitMs / 1000}s...`);
       await new Promise((r) => setTimeout(r, waitMs));
     }
@@ -336,14 +337,14 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
   const llm1Raw = await withRetry(() => runAnalyst(client, contractText, perspective), "Analyst");
   await writeAudit({ action: "analyst", resourceType: "analysis", resourceId: id, metadata: { model: "analyst", status: "complete", ms: Date.now() - llm1Start, perspective } });
   await db.update(schema.analyses).set({ llm1Output: llm1Raw, step: "critic" }).where(eq(schema.analyses.id, id));
-  await sleep(10000);
+  await sleep(20000); // Increased from 10s to 20s to avoid rate limits
 
   // Step 2: Critic
   const llm2Start = Date.now();
   const llm2Raw = await withRetry(() => runCritic(client, contractText, llm1Raw, perspective), "Critic");
   await writeAudit({ action: "critic", resourceType: "analysis", resourceId: id, metadata: { model: "critic", status: "complete", ms: Date.now() - llm2Start } });
   await db.update(schema.analyses).set({ llm2Output: llm2Raw, step: "adjudicator" }).where(eq(schema.analyses.id, id));
-  await sleep(15000);
+  await sleep(30000); // Increased from 15s to 30s to avoid rate limits
 
   // Step 3: Adjudicator
   const adjStart = Date.now();
