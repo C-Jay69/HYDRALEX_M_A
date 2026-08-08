@@ -67,12 +67,12 @@ export default function AnalyzePage() {
     
     if (!res.ok) {
       let errorMessage = "Upload failed";
+      const raw = await res.text();
       try {
-        const err = await res.json();
+        const err = JSON.parse(raw);
         errorMessage = err.error || err.message || errorMessage;
-      } catch (e) {
-        const text = await res.text();
-        if (text) errorMessage = text;
+      } catch {
+        if (raw) errorMessage = raw;
       }
       throw new Error(errorMessage);
     }
