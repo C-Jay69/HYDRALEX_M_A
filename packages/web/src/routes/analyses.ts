@@ -35,11 +35,9 @@ import {
   type DocInput,
 } from "../lib/analysis-modules.js";
 import { authMiddleware, requireAuth } from "../middleware/auth.js";
-import { Autumn } from "autumn-js";
+import { getQuotaUsage, incrementAnalysisUsage } from "../lib/quota.js";
 import { userMeta } from "../database/schema.js";
 import { createHash } from "crypto";
-
-const autumn = new Autumn();
 
 /** Returns true if the user is an admin — admins bypass all quota checks. */
 async function isAdmin(userId: string): Promise<boolean> {
@@ -98,13 +96,9 @@ export const analyses = new Hono()
 
     // Quota check (admins bypass)
     if (!(await isAdmin(user.id))) {
-      try {
-        const { allowed } = await autumn.check({ customerId: user.id, featureId: "analyses" });
-        if (!allowed) {
-          return c.json({ error: "Monthly analysis quota reached. Upgrade your plan to continue.", upgrade: true }, 402);
-        }
-      } catch (e) {
-        console.error("Autumn Quota Check Failed (Bypassing):", e);
+      const quota = await getQuotaUsage(user.id);
+      if (!quota.unlimited && quota.used >= (quota.limit ?? 0)) {
+        return c.json({ error: "Monthly analysis quota reached. Upgrade your plan to continue.", upgrade: true }, 402);
       }
     }
 
@@ -154,8 +148,8 @@ export const analyses = new Hono()
       .returning();
 
     if (user) {
-      autumn.track({ customerId: user.id, featureId: "analyses", value: 1 })
-        .catch((e) => console.warn(`[Autumn] Tracking failed for ${user.id} (likely user not provisioned):`, e.message));
+      incrementAnalysisUsage(user.id)
+        .catch((e) => console.warn(`[Quota] Usage increment failed for ${user.id}:`, e.message));
     }
 
     runPipeline(inserted.id, documents, perspective).catch(async (err) => {
@@ -171,13 +165,9 @@ export const analyses = new Hono()
     const user = c.get("user") as any;
 
     if (!(await isAdmin(user.id))) {
-      try {
-        const { allowed } = await autumn.check({ customerId: user.id, featureId: "analyses" });
-        if (!allowed) {
-          return c.json({ error: "Monthly analysis quota reached. Upgrade your plan to continue.", upgrade: true }, 402);
-        }
-      } catch (e) {
-        console.error("Autumn Quota Check Failed (Bypassing):", e);
+      const quota = await getQuotaUsage(user.id);
+      if (!quota.unlimited && quota.used >= (quota.limit ?? 0)) {
+        return c.json({ error: "Monthly analysis quota reached. Upgrade your plan to continue.", upgrade: true }, 402);
       }
     }
 
@@ -240,8 +230,8 @@ export const analyses = new Hono()
       .returning();
 
     if (user) {
-      autumn.track({ customerId: user.id, featureId: "analyses", value: 1 })
-        .catch((e) => console.warn(`[Autumn] Tracking failed for ${user.id} (likely user not provisioned):`, e.message));
+      incrementAnalysisUsage(user.id)
+        .catch((e) => console.warn(`[Quota] Usage increment failed for ${user.id}:`, e.message));
     }
 
     runPipeline(inserted.id, documents, uploadPerspective).catch(async (err) => {

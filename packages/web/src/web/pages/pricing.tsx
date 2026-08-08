@@ -1,86 +1,104 @@
-import { useCustomer, useListPlans } from "autumn-js/react";
-import { authClient } from "../lib/auth";
 import { Link } from "wouter";
-import { Check, Scale, Zap, Building2, Globe, Calendar } from "lucide-react";
+import { Check, Scale, Zap, Building2, Globe, Calendar, ArrowRight } from "lucide-react";
 
-const PLAN_META: Record<string, { icon: any; color: string; badge?: string; docs: string; features: string[] }> = {
-  free: {
+type Tier = {
+  id: string;
+  name: string;
+  price: string;
+  priceNote: string;
+  quota: string;
+  icon: any;
+  color: string;
+  badge?: string;
+  features: string[];
+  cta: string;
+  href: string;
+};
+
+const TIERS: Tier[] = [
+  {
+    id: "free",
+    name: "Free",
+    price: "$0",
+    priceNote: "Trial",
+    quota: "1 analysis / month",
     icon: Scale,
     color: "#64748b",
-    docs: "1 / month",
     features: [
-      "1 analysis per month (template only)",
-      "Explore UI, see sample results",
-      "Triple-LLM pipeline preview",
-      "Risk scoring (0–100)",
+      "1 analysis per month",
+      "Core triple-LLM pipeline",
+      "Risk score (0–100)",
       "Executive summary",
+      "Sample deal-room report",
     ],
+    cta: "Get Started",
+    href: "/sign-up",
   },
-  professional: {
+  {
+    id: "professional",
+    name: "Professional",
+    price: "$1,500",
+    priceNote: "/ month",
+    quota: "10 analyses / month",
     icon: Zap,
     color: "#d4a843",
     badge: "Most Popular",
-    docs: "10 / month",
     features: [
       "10 analyses per month",
       "Everything in Free",
-      "Full pipeline, PDF export",
-      "Buyer & Seller perspective",
-      "30-day analysis history",
+      "Full pipeline + PDF export",
+      "Buyer & Seller perspectives",
+      "Multi-document deal rooms",
+      "3 team seats",
       "Email support",
     ],
+    cta: "Request Access",
+    href: "mailto:sales@hydraforge.com?subject=Professional%20Plan%20Request",
   },
-  business: {
+  {
+    id: "business",
+    name: "Business",
+    price: "$5,000",
+    priceNote: "/ month",
+    quota: "50 analyses / month",
     icon: Building2,
     color: "#00d4aa",
-    docs: "50 / month",
     features: [
       "50 analyses per month",
       "Everything in Professional",
+      "10 team seats",
       "90-day analysis history",
       "Priority support",
-      "5 team seats",
       "Advanced risk calibration",
+      "API access",
     ],
+    cta: "Request Access",
+    href: "mailto:sales@hydraforge.com?subject=Business%20Plan%20Request",
   },
-  enterprise: {
+  {
+    id: "enterprise",
+    name: "Enterprise",
+    price: "Custom",
+    priceNote: "from $15,000 / month",
+    quota: "Unlimited analyses",
     icon: Globe,
     color: "#8b5cf6",
-    docs: "Unlimited",
     features: [
       "Unlimited analyses",
       "Everything in Business",
       "99.9% SLA guarantee",
-      "API access",
-      "White-label reports",
       "SSO / SAML",
-      "Dedicated onboarding",
+      "White-label reports",
+      "Dedicated onboarding & CSM",
       "Custom data retention",
+      "Firm-precedent model training",
     ],
+    cta: "Book a Demo",
+    href: "mailto:sales@hydraforge.com?subject=Enterprise%20Demo%20Request",
   },
-};
-
-const PLAN_ORDER = ["free", "professional", "business", "enterprise"];
+];
 
 export default function PricingPage() {
-  const { data: customer, attach } = useCustomer();
-  const { data: plans } = useListPlans();
-  const { data: session } = authClient.useSession();
-
-  const activePlanId = customer?.subscriptions?.[0]?.planId ?? "free";
-
-  const sortedPlans = (plans ?? []).slice().sort(
-    (a: any, b: any) => PLAN_ORDER.indexOf(a.id) - PLAN_ORDER.indexOf(b.id)
-  );
-
-  function handleUpgrade(planId: string) {
-    if (!session) {
-      window.location.href = "/sign-up";
-      return;
-    }
-    attach({ planId, successUrl: window.location.origin });
-  }
-
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg-primary)" }}>
       {/* Hero */}
@@ -110,11 +128,12 @@ export default function PricingPage() {
           marginBottom: "16px",
           lineHeight: 1.2,
         }}>
-          Replace $30K in associate<br />time for $499/month
+          Built for the deal room.<br />Priced for the work it replaces.
         </h1>
-        <p style={{ color: "var(--text-muted)", fontSize: "15px", maxWidth: "520px", margin: "0 auto 12px", lineHeight: 1.6 }}>
-          Triple-layer AI analysis. Junior associate speed. Senior partner accuracy.
-          Market-calibrated M&A risk scoring in under 5 minutes.
+        <p style={{ color: "var(--text-muted)", fontSize: "15px", maxWidth: "560px", margin: "0 auto 12px", lineHeight: 1.6 }}>
+          Triple-layer AI analysis. Junior associate speed, senior partner scrutiny.
+          Market-calibrated M&A risk scoring in minutes — at a fraction of a single
+          associate's billable review.
         </p>
         <div style={{
           display: "inline-flex",
@@ -129,7 +148,7 @@ export default function PricingPage() {
           fontWeight: 600,
           marginTop: "4px",
         }}>
-          <Calendar size={12} /> Annual billing saves 20%
+          <Calendar size={12} /> Annual billing saves 2 months
         </div>
       </div>
 
@@ -142,17 +161,13 @@ export default function PricingPage() {
         gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
         gap: "20px",
       }}>
-        {sortedPlans.map((plan: any) => {
-          const meta = PLAN_META[plan.id] ?? PLAN_META.free;
-          const Icon = meta.icon;
-          const isActive = plan.id === activePlanId;
-          const isPro = plan.id === "professional";
-          const isEnterprise = plan.id === "enterprise";
-          const action = plan.customerEligibility?.attachAction;
+        {TIERS.map((tier) => {
+          const Icon = tier.icon;
+          const isPro = tier.id === "professional";
 
           return (
             <div
-              key={plan.id}
+              key={tier.id}
               style={{
                 background: isPro ? "linear-gradient(135deg, rgba(212,168,67,0.06) 0%, var(--bg-secondary) 100%)" : "var(--bg-secondary)",
                 border: isPro ? "1px solid rgba(212,168,67,0.4)" : "1px solid var(--border)",
@@ -163,7 +178,7 @@ export default function PricingPage() {
                 flexDirection: "column",
               }}
             >
-              {meta.badge && (
+              {tier.badge && (
                 <div style={{
                   position: "absolute",
                   top: "-12px",
@@ -179,7 +194,7 @@ export default function PricingPage() {
                   letterSpacing: "0.06em",
                   whiteSpace: "nowrap",
                 }}>
-                  {meta.badge}
+                  {tier.badge}
                 </div>
               )}
 
@@ -187,80 +202,80 @@ export default function PricingPage() {
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "20px" }}>
                 <div style={{
                   width: "36px", height: "36px",
-                  background: `${meta.color}18`,
-                  border: `1px solid ${meta.color}40`,
+                  background: `${tier.color}18`,
+                  border: `1px solid ${tier.color}40`,
                   borderRadius: "8px",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                 }}>
-                  <Icon size={16} color={meta.color} />
+                  <Icon size={16} color={tier.color} />
                 </div>
                 <div>
                   <div style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700, fontSize: "14px", color: "var(--text-primary)" }}>
-                    {plan.name}
+                    {tier.name}
                   </div>
                   <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                    {meta.docs} analyses
+                    {tier.quota}
                   </div>
                 </div>
               </div>
 
               {/* Price */}
               <div style={{ marginBottom: "24px" }}>
-                {isEnterprise ? (
-                  <div>
-                    <span style={{ fontFamily: "Poppins, sans-serif", fontWeight: 800, fontSize: "1.8rem", color: "var(--text-primary)" }}>
-                      Custom
-                    </span>
-                    <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-                      from $3,500/month
-                    </div>
-                  </div>
-                ) : plan.price ? (
-                  <div>
-                    <span style={{ fontFamily: "Poppins, sans-serif", fontWeight: 800, fontSize: "2rem", color: "var(--text-primary)" }}>
-                      ${(plan.price.amount / 100).toLocaleString()}
-                    </span>
-                    <span style={{ color: "var(--text-muted)", fontSize: "13px" }}>/month</span>
-                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
-                      ~${Math.round(plan.price.amount / 100 / (plan.id === "professional" ? 10 : 50))}/analysis
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <span style={{ fontFamily: "Poppins, sans-serif", fontWeight: 800, fontSize: "2rem", color: "var(--text-primary)" }}>
-                      $0
-                    </span>
-                    <span style={{ color: "var(--text-muted)", fontSize: "13px" }}>/month</span>
-                  </div>
-                )}
+                <span style={{ fontFamily: "Poppins, sans-serif", fontWeight: 800, fontSize: "2rem", color: "var(--text-primary)" }}>
+                  {tier.price}
+                </span>
+                <span style={{ color: "var(--text-muted)", fontSize: "13px" }}> {tier.priceNote}</span>
               </div>
 
               {/* Features */}
               <div style={{ flex: 1, marginBottom: "24px" }}>
-                {meta.features.map((f) => (
+                {tier.features.map((f) => (
                   <div key={f} style={{ display: "flex", gap: "8px", marginBottom: "9px", alignItems: "flex-start" }}>
-                    <Check size={13} color={meta.color} style={{ flexShrink: 0, marginTop: "2px" }} />
+                    <Check size={13} color={tier.color} style={{ flexShrink: 0, marginTop: "2px" }} />
                     <span style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.4 }}>{f}</span>
                   </div>
                 ))}
               </div>
 
               {/* CTA */}
-              {isEnterprise ? (
+              {tier.id === "free" ? (
+                <Link to={tier.href} style={{ textDecoration: "none" }}>
+                  <button
+                    style={{
+                      width: "100%",
+                      padding: "10px 16px",
+                      background: `${tier.color}18`,
+                      border: `1px solid ${tier.color}40`,
+                      borderRadius: "6px",
+                      color: tier.color,
+                      fontFamily: "Poppins, sans-serif",
+                      fontWeight: 600,
+                      fontSize: "12px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    {tier.cta} <ArrowRight size={13} />
+                  </button>
+                </Link>
+              ) : (
                 <a
-                  href="mailto:enterprise@hydraforge.com?subject=Enterprise Demo Request"
+                  href={tier.href}
                   style={{
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     gap: "6px",
                     padding: "10px 16px",
-                    background: `${meta.color}18`,
-                    border: `1px solid ${meta.color}40`,
+                    background: isPro ? "var(--accent-gold)" : `${tier.color}18`,
+                    border: isPro ? "none" : `1px solid ${tier.color}40`,
                     borderRadius: "6px",
-                    color: meta.color,
+                    color: isPro ? "#0a0d14" : tier.color,
                     fontFamily: "Poppins, sans-serif",
                     fontWeight: 600,
                     fontSize: "12px",
@@ -268,39 +283,8 @@ export default function PricingPage() {
                     cursor: "pointer",
                   }}
                 >
-                  <Calendar size={13} /> Book a Demo
+                  <Calendar size={13} /> {tier.cta}
                 </a>
-              ) : isActive ? (
-                <div style={{
-                  padding: "10px 16px",
-                  background: "rgba(16,185,129,0.08)",
-                  border: "1px solid rgba(16,185,129,0.3)",
-                  borderRadius: "6px",
-                  color: "#10b981",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  textAlign: "center",
-                }}>
-                  ✓ Current Plan
-                </div>
-              ) : (
-                <button
-                  onClick={() => handleUpgrade(plan.id)}
-                  style={{
-                    width: "100%",
-                    padding: "10px 16px",
-                    background: isPro ? "var(--accent-gold)" : `${meta.color}18`,
-                    border: isPro ? "none" : `1px solid ${meta.color}40`,
-                    borderRadius: "6px",
-                    color: isPro ? "#0a0d14" : meta.color,
-                    fontFamily: "Poppins, sans-serif",
-                    fontWeight: 600,
-                    fontSize: "12px",
-                    cursor: "pointer",
-                  }}
-                >
-                  {action === "downgrade" ? "Downgrade" : plan.price ? "Upgrade" : "Get Started"}
-                </button>
               )}
             </div>
           );
@@ -325,13 +309,12 @@ export default function PricingPage() {
           {/* Value prop */}
           <div>
             <h3 style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700, fontSize: "1rem", color: "var(--text-primary)", marginBottom: "12px" }}>
-              Why not $99/month?
+              Why not $499/month?
             </h3>
             <p style={{ color: "var(--text-muted)", fontSize: "13px", lineHeight: 1.7, margin: 0 }}>
-              A junior associate bills at <strong style={{ color: "var(--text-secondary)" }}>$350–600/hour</strong>. M&A document review takes 8–20 hours — <strong style={{ color: "var(--text-secondary)" }}>$3,000–$12,000</strong> per document before markup.
-              Professional at $499/month delivers the equivalent of <strong style={{ color: "var(--accent-gold)" }}>$30,000–$120,000</strong> in associate time.
-              Comparable platforms (Kira, Luminance, Harvey AI) charge $1,500–$10,000+/month.
-              Hydraforge enters competitively without signalling consumer-grade tooling to this market.
+              A junior associate bills at <strong style={{ color: "var(--text-secondary)" }}>$350–600/hour</strong>. M&amp;A document review takes 8–20 hours — <strong style={{ color: "var(--text-secondary)" }}>$3,000–$12,000</strong> per document before markup.
+              Even a single deal covers a month of Professional. Firms running 3–5 deals a month see <strong style={{ color: "var(--accent-gold)" }}>10–30x ROI</strong>.
+              Comparable platforms (Kira, Luminance, Harvey) land enterprise contracts at $1,500–$10,000+/month. Hydraforge prices for institutional trust, not consumer convenience.
             </p>
           </div>
           {/* Enterprise CTA */}
@@ -340,10 +323,10 @@ export default function PricingPage() {
               Enterprise M&amp;A clients don't self-serve.
             </h3>
             <p style={{ color: "var(--text-muted)", fontSize: "13px", lineHeight: 1.6, margin: 0 }}>
-              Large law firms and advisory teams need SLAs, SSO, white-label, and onboarding. Let's talk about what works for your firm.
+              Large law firms and advisory teams need SLAs, SSO, white-label, security reviews, and onboarding. Let's talk about what works for your firm.
             </p>
             <a
-              href="mailto:enterprise@hydraforge.com?subject=Enterprise Demo Request"
+              href="mailto:sales@hydraforge.com?subject=Enterprise%20Demo%20Request"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -375,7 +358,7 @@ export default function PricingPage() {
           marginTop: "16px",
           lineHeight: 1.6,
         }}>
-          Quota is enforced at the point of analysis submission. Hitting your limit returns HTTP 402 with an upgrade link. Annual billing at 20% discount available on all paid plans.
+          Your plan determines your monthly analysis allowance, enforced at submission. Annual billing saves two months on paid plans.
         </p>
       </div>
 

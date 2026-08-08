@@ -7,6 +7,7 @@ import { authMiddleware, requireAuth } from "./middleware/auth.js";
 import { rateLimit, keyByUser, GENERAL_PER_MIN, AUTH_PER_MIN, ANALYSIS_PER_MIN } from "./middleware/ratelimit.js";
 import { db } from "./database.js";
 import { userMeta } from "./database/schema.js";
+import { getQuotaUsage } from "./lib/quota.js";
 import { eq } from "drizzle-orm";
 
 const app = new Hono()
@@ -35,11 +36,16 @@ const app = new Hono()
   .get("/me", authMiddleware, requireAuth, async (c) => {
     const user = (c as any).get("user") as any;
     const [meta] = await db.select().from(userMeta).where(eq(userMeta.userId, user.id)).limit(1);
+    const isAdmin = meta?.isAdmin ?? false;
+    const quota = isAdmin
+      ? { used: 0, limit: null, unlimited: true, resetAt: null, plan: "enterprise" }
+      : await getQuotaUsage(user.id);
     return c.json({
       id: user.id,
       name: user.name,
       email: user.email,
-      isAdmin: meta?.isAdmin ?? false,
+      isAdmin,
+      quota,
     }, 200);
   })
   .route("/analyses", analyses)

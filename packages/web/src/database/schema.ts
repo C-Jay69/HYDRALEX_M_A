@@ -62,6 +62,7 @@ export const project_documents = sqliteTable("project_documents", {
 export const userMeta = sqliteTable("user_meta", {
   userId: text("user_id").primaryKey(),
   isAdmin: integer("is_admin", { mode: "boolean" }).notNull().default(false),
+  plan: text("plan").notNull().default("free"), // free | professional | business | enterprise
   docsUsedThisMonth: integer("docs_used_this_month").notNull().default(0),
   monthResetAt: integer("month_reset_at", { mode: "timestamp" }),
 });

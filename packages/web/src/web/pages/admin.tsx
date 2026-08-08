@@ -100,6 +100,26 @@ export default function AdminPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
   });
 
+  const setPlanMutation = useMutation({
+    mutationFn: async ({ userId, plan }: { userId: string; plan: string }) => {
+      const res = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("bearer_token") ?? ""}`,
+        },
+        body: JSON.stringify({ plan }),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-user-detail"] });
+    },
+  });
+
+  const PLAN_OPTIONS = ["free", "professional", "business", "enterprise"];
+
   const stats = (statsData as any)?.stats;
 
   const tabs: { key: Tab; label: string; icon: any }[] = [
@@ -273,7 +293,7 @@ export default function AdminPage() {
                     </button>
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: "24px", marginTop: "16px" }}>
+                <div style={{ display: "flex", gap: "24px", marginTop: "16px", alignItems: "flex-end" }}>
                   {[
                     { label: "Joined", value: formatDate((userDetailData as any).user.createdAt) },
                     { label: "Docs this month", value: (userDetailData as any).user.docsUsedThisMonth ?? 0 },
@@ -284,6 +304,27 @@ export default function AdminPage() {
                       <div style={{ fontSize: "13px", color: "var(--text-primary)", fontWeight: 500 }}>{value}</div>
                     </div>
                   ))}
+                  <div>
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "2px" }}>Plan</div>
+                    <select
+                      value={(userDetailData as any).user.plan ?? "free"}
+                      onChange={(e) => setPlanMutation.mutate({ userId: selectedUser as string, plan: e.target.value })}
+                      style={{
+                        background: "var(--bg-tertiary)",
+                        color: "var(--text-secondary)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "5px",
+                        fontSize: "12px",
+                        padding: "4px 8px",
+                        cursor: "pointer",
+                        fontFamily: "Poppins, sans-serif",
+                      }}
+                    >
+                      {PLAN_OPTIONS.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
               {/* User analyses */}
@@ -319,7 +360,7 @@ export default function AdminPage() {
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                      {["Name", "Email", "Admin", "Docs This Month", "Joined", ""].map(h => (
+                      {["Name", "Email", "Plan", "Admin", "Docs This Month", "Joined", ""].map(h => (
                         <th key={h} style={{ textAlign: "left", padding: "10px 12px", fontSize: "11px", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
                       ))}
                     </tr>
@@ -329,6 +370,26 @@ export default function AdminPage() {
                       <tr key={u.id} style={{ borderBottom: "1px solid var(--border)" }}>
                         <td style={{ padding: "12px", fontSize: "13px", color: "var(--text-primary)", fontWeight: 500 }}>{u.name}</td>
                         <td style={{ padding: "12px", fontSize: "13px", color: "var(--text-muted)" }}>{u.email}</td>
+                        <td style={{ padding: "12px" }}>
+                          <select
+                            value={u.plan ?? "free"}
+                            onChange={(e) => setPlanMutation.mutate({ userId: u.id, plan: e.target.value })}
+                            style={{
+                              background: "var(--bg-tertiary)",
+                              color: "var(--text-secondary)",
+                              border: "1px solid var(--border)",
+                              borderRadius: "5px",
+                              fontSize: "12px",
+                              padding: "4px 8px",
+                              cursor: "pointer",
+                              fontFamily: "Poppins, sans-serif",
+                            }}
+                          >
+                            {PLAN_OPTIONS.map((p) => (
+                              <option key={p} value={p}>{p}</option>
+                            ))}
+                          </select>
+                        </td>
                         <td style={{ padding: "12px" }}>
                           {u.isAdmin ? <CheckCircle size={14} color="#10b981" /> : <XCircle size={14} color="#ef4444" />}
                         </td>

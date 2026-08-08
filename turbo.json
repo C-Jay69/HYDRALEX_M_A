@@ -11,10 +11,7 @@
         "BETTER_AUTH_SECRET",
         "OPENROUTER_API_KEY",
         "WEBSITE_URL",
-        "AUTUMN_SECRET_KEY",
-        "FRONTEND_URL",
-        "AUTUMN_API_KEY",
-        "AUTUMN_PROJECT_ID"
+        "FRONTEND_URL"
       ]
     },
     "lint": {},

@@ -4,7 +4,6 @@ import { api } from "../lib/api";
 import { formatDate, getRiskColor } from "../lib/utils";
 import ScoreBadge from "../components/ScoreBadge";
 import { authClient } from "../lib/auth";
-import { useCustomer } from "autumn-js/react";
 import {
   FilePlus,
   FileText,
@@ -20,7 +19,16 @@ import {
 export default function DashboardPage() {
   const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
-  const { data: customer } = useCustomer();
+
+  const { data: meData } = useQuery({
+    queryKey: ["me"],
+    queryFn: async () => {
+      const res = await api.me.$get();
+      if (!res.ok) return null;
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ["analyses"],
@@ -53,11 +61,11 @@ export default function DashboardPage() {
         )
       : null;
 
-  // Quota from Autumn
-  const analysesBalance = (customer as any)?.features?.analyses;
-  const quotaUnlimited = analysesBalance?.unlimited === true;
-  const quotaRemaining = quotaUnlimited ? null : (analysesBalance?.balance ?? null);
-  const quotaGranted = quotaUnlimited ? null : (analysesBalance?.included ?? analysesBalance?.limit ?? null);
+  // Quota from /api/me (plan-based monthly limit)
+  const quota = (meData as any)?.quota;
+  const quotaUnlimited = quota?.unlimited === true;
+  const quotaRemaining = quotaUnlimited ? null : quota?.limit != null ? Math.max(0, quota.limit - (quota.used ?? 0)) : null;
+  const quotaGranted = quotaUnlimited ? null : (quota?.limit ?? null);
   const quotaUsed =
     quotaRemaining !== null && quotaGranted !== null
       ? Math.max(0, quotaGranted - quotaRemaining)

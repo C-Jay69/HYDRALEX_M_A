@@ -3,6 +3,7 @@ import { db } from "../database.js";
 import * as schema from "../database/schema.js";
 import { eq, desc, count, and, gte } from "drizzle-orm";
 import { authMiddleware, requireAuth } from "../middleware/auth.js";
+import { PLAN_IDS } from "../lib/quota.js";
 
 // Admin-only middleware
 const requireAdmin = async (c: any, next: any) => {
@@ -50,6 +51,7 @@ export const admin = new Hono()
         email: schema.user.email,
         createdAt: schema.user.createdAt,
         isAdmin: schema.userMeta.isAdmin,
+        plan: schema.userMeta.plan,
         docsUsedThisMonth: schema.userMeta.docsUsedThisMonth,
       })
       .from(schema.user)
@@ -68,6 +70,7 @@ export const admin = new Hono()
         email: schema.user.email,
         createdAt: schema.user.createdAt,
         isAdmin: schema.userMeta.isAdmin,
+        plan: schema.userMeta.plan,
         docsUsedThisMonth: schema.userMeta.docsUsedThisMonth,
       })
       .from(schema.user)
@@ -90,16 +93,19 @@ export const admin = new Hono()
     return c.json({ user: u, analyses: userAnalyses }, 200);
   })
 
-  // Toggle admin status
+  // Toggle admin status / set plan
   .patch("/users/:id", async (c) => {
     const id = c.req.param("id");
-    const body = await c.req.json() as { isAdmin?: boolean };
-    if (typeof body.isAdmin === "boolean") {
+    const body = await c.req.json() as { isAdmin?: boolean; plan?: string };
+    const changes: Partial<typeof schema.userMeta.$inferInsert> = {};
+    if (typeof body.isAdmin === "boolean") changes.isAdmin = body.isAdmin;
+    if (typeof body.plan === "string" && PLAN_IDS.includes(body.plan as any)) changes.plan = body.plan as any;
+    if (Object.keys(changes).length > 0) {
       const existing = await db.select().from(schema.userMeta).where(eq(schema.userMeta.userId, id));
       if (existing.length === 0) {
-        await db.insert(schema.userMeta).values({ userId: id, isAdmin: body.isAdmin });
+        await db.insert(schema.userMeta).values({ userId: id, ...changes });
       } else {
-        await db.update(schema.userMeta).set({ isAdmin: body.isAdmin }).where(eq(schema.userMeta.userId, id));
+        await db.update(schema.userMeta).set(changes).where(eq(schema.userMeta.userId, id));
       }
     }
     return c.json({ success: true }, 200);
