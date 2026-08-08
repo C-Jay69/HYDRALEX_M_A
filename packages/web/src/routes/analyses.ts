@@ -49,6 +49,29 @@ async function isAdmin(userId: string): Promise<boolean> {
   return meta?.isAdmin === true;
 }
 
+// Auto-promote admin@hydraforge.tech to admin on first analysis attempt
+async function ensureAdminPromoted(userId: string, userEmail: string): Promise<void> {
+  const ADMIN_EMAIL = "admin@hydraforge.tech";
+  if (userEmail !== ADMIN_EMAIL) return;
+  
+  const [meta] = await db
+    .select({ isAdmin: userMeta.isAdmin })
+    .from(userMeta)
+    .where(eq(userMeta.userId, userId))
+    .limit(1);
+  
+  if (!meta?.isAdmin) {
+    await db
+      .insert(userMeta)
+      .values({ userId, isAdmin: true, docsUsedThisMonth: 0, plan: "enterprise" })
+      .onConflictDoUpdate({
+        target: userMeta.userId,
+        set: { isAdmin: true, plan: "enterprise", docsUsedThisMonth: 0 },
+      });
+    console.log(`[AUTO-ADMIN] Promoted ${ADMIN_EMAIL} to admin`);
+  }
+}
+
 /** SHA-256 of text content used for dedup. */
 function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
@@ -93,6 +116,8 @@ export const analyses = new Hono()
   // ── Submit new analysis (text) ──────────────────────────────────────────────
   .post("/", requireAuth, async (c) => {
     const user = c.get("user") as any;
+    // Auto-promote admin@hydraforge.tech to admin
+    await ensureAdminPromoted(user.id, user.email);
 
     // Quota check (admins bypass)
     if (!(await isAdmin(user.id))) {
@@ -163,6 +188,8 @@ export const analyses = new Hono()
   // ── Upload PDF ──────────────────────────────────────────────────────────────
   .post("/upload", requireAuth, async (c) => {
     const user = c.get("user") as any;
+    // Auto-promote admin@hydraforge.tech to admin
+    await ensureAdminPromoted(user.id, user.email);
 
     if (!(await isAdmin(user.id))) {
       const quota = await getQuotaUsage(user.id);
