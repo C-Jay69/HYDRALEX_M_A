@@ -266,7 +266,8 @@ async function withRetry<T>(fn: () => Promise<T>, label: string, maxAttempts = 4
         err?.status === 429 ||
         err?.message?.includes("429") ||
         err?.message?.toLowerCase().includes("rate limit") ||
-        err?.message?.toLowerCase().includes("provider returned error");
+        err?.message?.toLowerCase().includes("provider returned error") ||
+        err?.message?.toLowerCase().includes("too many requests");
 
       if (!is429 || attempt === maxAttempts) throw err;
       const waitMs = 15000 * Math.pow(2, attempt - 1);

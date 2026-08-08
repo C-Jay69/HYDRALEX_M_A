@@ -62,9 +62,12 @@ export function getOpenRouterClient() {
   return new OpenAI({
     baseURL: "https://openrouter.ai/api/v1",
     apiKey,
+    maxRetries: 3,
+    timeout: 120000,
     defaultHeaders: {
       "HTTP-Referer": "https://ma-review.runable.app",
       "X-Title": "M&A Contract Review Platform",
+      "Content-Type": "application/json",
     },
   });
 }
