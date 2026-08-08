@@ -1,5 +1,3 @@
-import pdfParse from "pdf-parse";
-
 /**
  * Extract text from a PDF buffer
  * @param {Buffer} buffer - The PDF file buffer
@@ -7,12 +5,18 @@ import pdfParse from "pdf-parse";
  */
 export async function extractPdfText(buffer) {
   try {
-    const data = await pdfParse(buffer);
-    return data.text;
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({ data: new Uint8Array(buffer) });
+    try {
+      const result = await parser.getText();
+      return result.text;
+    } finally {
+      await parser.destroy();
+    }
   } catch (error) {
     console.error("PDF extraction error:", error);
     // Check for common PDF parsing errors
-    if (error.message?.includes("Invalid PDF") || 
+    if (error.message?.includes("Invalid PDF") ||
         error.message?.includes("Unable to parse") ||
         error.message?.includes("No PDF part found")) {
       throw new Error("PDF_UNREADABLE");

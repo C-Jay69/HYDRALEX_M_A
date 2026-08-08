@@ -12,9 +12,10 @@ export async function extractPdfText(buffer: Buffer): Promise<string> {
   // Strategy 1: pdf-parse (Pure JS, most compatible with Vercel)
   try {
     console.log("[PDF] Attempting Strategy 1: pdf-parse...");
-    const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
-    const data = await pdfParse(buffer);
-    
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({ data: new Uint8Array(buffer) });
+    const data = await parser.getText();
+
     if (data && data.text && data.text.trim().length > 50) {
       console.log("[PDF] Strategy 1 SUCCESS: pdf-parse extracted text.");
       return data.text;
