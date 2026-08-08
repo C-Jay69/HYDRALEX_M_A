@@ -27,6 +27,11 @@ export const analyses = sqliteTable("analyses", {
   redFlagData: text("red_flag_data"),
   regulatoryData: text("regulatory_data"),
   litigationData: text("litigation_data"),
+  // Structured outputs from Stages 1/2/10/11.
+  inventoryData: text("inventory_data"),
+  transactionMappingData: text("transaction_mapping_data"),
+  negotiationData: text("negotiation_data"),
+  qaData: text("qa_data"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

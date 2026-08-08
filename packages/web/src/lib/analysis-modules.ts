@@ -1146,3 +1146,568 @@ export function renderLitigation(result: { areas: LitigationAreaT[] }): string {
   }
   return lines.join("\n");
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STAGE 11 — QUALITY ASSURANCE RENDER
+// Renders the server-side score-validation (validateScore) narrative plus a
+// self-review checklist into the final report. This is the deployable QA gate.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface QualityAssuranceInput {
+  rawScore: number;
+  validatedScore: number;
+  tier: string;
+  appliedDeductions: Record<string, number>;
+  interactionAdjustment: number;
+  narrative: string[];
+  detectedConditions: string[];
+}
+
+export function renderQualityAssurance(qa: QualityAssuranceInput): string {
+  const lines: string[] = [];
+  lines.push("### QUALITY ASSURANCE (STAGE 11)");
+  lines.push("");
+  lines.push(`**Raw LLM score:** ${qa.rawScore}/100 → **Validated score:** ${qa.validatedScore}/100`);
+  lines.push(`**Draft tier:** ${qa.tier}`);
+  lines.push("");
+  if (qa.appliedDeductions && Object.keys(qa.appliedDeductions).length) {
+    lines.push("**Applied deductions (per-condition):**");
+    for (const [cond, pts] of Object.entries(qa.appliedDeductions)) {
+      lines.push(`- ${cond}: -${pts} pts`);
+    }
+    lines.push("");
+  }
+  if (qa.interactionAdjustment !== 0) {
+    lines.push(`**Interaction-stack adjustment:** ${qa.interactionAdjustment > 0 ? "+" : ""}${qa.interactionAdjustment} pts`);
+    lines.push("");
+  }
+  if (qa.detectedConditions?.length) {
+    lines.push(`**Detected scoring conditions (${qa.detectedConditions.length}):** ${qa.detectedConditions.join(", ")}`);
+    lines.push("");
+  }
+  if (qa.narrative?.length) {
+    lines.push("**Validation narrative:**");
+    for (const n of qa.narrative) lines.push(`- ${n}`);
+    lines.push("");
+  }
+  lines.push("_QA self-review: score is clamped against deterministic conditions; any critical finding flagged CRITICAL by either specialist is elevated for human review._");
+  lines.push("");
+  return lines.join("\n");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STAGE 1 — DOCUMENT INVENTORY
+// Identifies document type, version, execution status, governing law, effective
+// date, parties, affiliates, related agreements, missing schedules/exhibits,
+// OCR quality concerns, and duplicates.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type InventoryIssueType =
+  | "missing_schedule"
+  | "missing_exhibit"
+  | "missing_amendment"
+  | "placeholder_language"
+  | "ocr_quality_concern"
+  | "illegible_section"
+  | "duplicate_file";
+
+export interface InventoryItemT {
+  documentType: string;
+  version: string;
+  executionStatus: string;
+  governingLaw: string;
+  effectiveDate: string;
+  parties: string[];
+  affiliates: string[];
+  relatedAgreements: string[];
+  missingSchedules: string[];
+  missingExhibits: string[];
+  missingAmendments: string[];
+  issues: { type: InventoryIssueType; description: string; evidence?: string }[];
+  ocrQuality: "good" | "fair" | "poor";
+  duplicates: string[];
+}
+
+export interface InventoryResult {
+  documents: InventoryItemT[];
+  inventoryIssues: number;
+}
+
+const DOC_TYPE_RE = /(?:AGREEMENT\s+AND\s+PLAN\s+OF\s+MERGER|PLAN\s+OF\s+MERGER|MERGER\s+AGREEMENT|STOCK\s+PURCHASE\s+AGREEMENT|SHARE\s+PURCHASE\s+AGREEMENT|ASSET\s+PURCHASE\s+AGREEMENT|PURCHASE\s+AGREEMENT|SECURITIES\s+PURCHASE\s+AGREEMENT|SUBSCRIPTION\s+AGREEMENT|MASTER\s+SERVICES\s+AGREEMENT|JOINT\s+VENTURE\s+AGREEMENT|TERM\s+SHEET|LETTER\s+OF\s+INTENT|INDEMNIFICATION\s+AGREEMENT|CONTRIBUTION\s+AGREEMENT)/i;
+const PARTIES_RE = /between\s+([^,]+?)\s+\(?\s*["']?([A-Z][A-Za-z0-9\s&.'-]*?)["']?\s*(?:,?\s+an?\s+[A-Za-z]+ corporation|\s*\)?)?\s*(?:,|and)\s+(?:and\s+)?([^,;]+?)\s*\(?\s*["']?([A-Z][A-Za-z0-9\s&.'-]*?)["']?\s*(?:,?\s+an?\s+[A-Za-z]+ corporation)?/i;
+const PLACEHOLDER_RE = /\[(?:to\s+be\s+(?:inserted|determined|negotiated)|TBD|TBA|insert|●|\*)\]/gi;
+const ILIEGIBLE_RE = /[█▓▒░]{4,}|\uFFFD{3,}|\bOCR[^.]{0,60}(?:error|quality|issue)\b/gi;
+const OCR_POOR_RE = /\b(?:scan(?:ned)?\s+document|image-only|unrecognized\s+text|garbled|illegible|unreadable)\b/gi;
+const VERSION_RE = /\b(?:Version|Revision|v|Draft|Amended|Restated)\s*[.\s-]*([\d.]+|[A-Z])\b/i;
+const EXEC_STATUS_RE = /\b(?:executed|signed|countersigned|effective\s+as\s+of|duly\s+executed|not\s+yet\s+executed|execution\s+copy|counterpart)\b/gi;
+const GOV_LAW_RE = /(?:governed\s+by|governing\s+law\s+is|under\s+the\s+laws\s+of)\s+([^.;]{2,80})/i;
+const EFFECTIVE_RE = /(?:effective\s+as\s+of|as\s+of|made\s+as\s+of|dated)\s+(?:the\s+)?([A-Z][a-z]+\s+\d{1,2},?\s+\d{4})/i;
+const AFFILIATE_RE = /\b(?:affiliate|affiliates|subsidiaries?|parent\s+company)\b/gi;
+const RELATED_AGREEMENTS_RE = /\b(?:escrow\s+agreement|transition\s+services\s+agreement|TSA|non-?competition\s+agreement|non-?solicitation\s+agreement|indemnification\s+agreement|registration\s+rights\s+agreement|employment\s+agreement|assignment\s+and\s+assumption\s+agreement|RWI\s+policy|shareholders?\s+agreement|operating\s+agreement|lease\s+agreement)\b/gi;
+
+export function runDocumentInventory(documents: DocInput[]): InventoryResult {
+  const result: InventoryItemT[] = [];
+  let issueCount = 0;
+
+  for (const doc of documents) {
+    const text = doc.text;
+    const issues: InventoryItemT["issues"] = [];
+
+    const typeMatch = text.match(DOC_TYPE_RE);
+    const versionMatch = text.match(VERSION_RE);
+    const execMatches = text.match(EXEC_STATUS_RE);
+    const lawMatch = text.match(GOV_LAW_RE);
+    const effMatch = text.match(EFFECTIVE_RE);
+
+    // Parties — best effort; defined-term "Buyer"/"Seller" with entity names
+    const parties: string[] = [];
+    const pm = text.match(PARTIES_RE);
+    if (pm) {
+      const a = (pm[1] ?? pm[2] ?? "").replace(/\(.+\)/g, "").trim();
+      const b = (pm[3] ?? pm[4] ?? "").replace(/\(.+\)/g, "").trim();
+      if (a && a.length > 2 && !a.toLowerCase().startsWith("the")) parties.push(a);
+      if (b && b.length > 2 && !b.toLowerCase().startsWith("the")) parties.push(b);
+    }
+    if (parties.length === 0) {
+      const buyerMatch = text.match(/["']?Buyer["']?\s*(?:shall\s+mean\s+|means\s+)?(?:the\s+)?([A-Z][A-Za-z0-9\s&.'-]{2,50}?)\s*(?:,|;|\.)/i);
+      const sellerMatch = text.match(/["']?Seller["']?\s*(?:shall\s+mean\s+|means\s+)?(?:the\s+)?([A-Z][A-Za-z0-9\s&.'-]{2,50}?)\s*(?:,|;|\.)/i);
+      if (buyerMatch) parties.push(`Buyer: ${buyerMatch[1].trim()}`);
+      if (sellerMatch) parties.push(`Seller: ${sellerMatch[1].trim()}`);
+    }
+
+    // Missing schedules/exhibits — cross-references without attached definitions
+    const referenced = new Set<string>();
+    const attached = new Set<string>();
+    let sm: RegExpExecArray | null;
+    const schedRe = /\b(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z]?\d+[a-z]?)\b/gi;
+    while ((sm = schedRe.exec(text)) !== null) {
+      referenced.add(sm[1].toUpperCase());
+      const before = text.slice(Math.max(0, sm.index - 60), sm.index);
+      if (/attached|hereto|following|heading|set forth on/i.test(before)) attached.add(sm[1].toUpperCase());
+    }
+    // Attached definitions: lines like "Schedule 4.1 —" or "SCHEDULE 4.1"
+    let am: RegExpExecArray | null;
+    const attachRe = /\b(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z]?\d+[a-z]?)\s*[:—-]/gi;
+    while ((am = attachRe.exec(text)) !== null) attached.add(am[1].toUpperCase());
+
+    const missingSchedules: string[] = [];
+    const missingExhibits: string[] = [];
+    for (const label of referenced) {
+      if (attached.has(label)) continue;
+      const fullLabel = `${doc.filename} — Schedule/Exhibit ${label}`;
+      if (/^[A-Z]\d+$/.test(label)) missingSchedules.push(fullLabel);
+      else missingSchedules.push(fullLabel);
+    }
+    const missingAmendments: string[] = [];
+    if (/\bamendment\b/i.test(text) && !/(?:this|the)\s+amendment\s+is\s+(?:attached|hereto)/i.test(text)) {
+      missingAmendments.push(`${doc.filename} — referenced amendment not provided`);
+    }
+
+    // Placeholders / OCR concerns
+    let plc: RegExpExecArray | null;
+    while ((plc = PLACEHOLDER_RE.exec(text)) !== null) {
+      issues.push({ type: "placeholder_language", description: `Placeholder language found: '${plc[0].trim()}'`, evidence: ctx(text, plc.index, 80) });
+      issueCount++;
+      if (issues.filter((i) => i.type === "placeholder_language").length >= 5) break;
+    }
+    let il: RegExpExecArray | null;
+    while ((il = ILIEGIBLE_RE.exec(text)) !== null) {
+      issues.push({ type: "illegible_section", description: "Illegible / OCR-corrupted text detected", evidence: ctx(text, il.index, 80) });
+      issueCount++;
+      break;
+    }
+    const ocrCount = countMatches(text, OCR_POOR_RE);
+    if (ocrCount > 0) {
+      issues.push({ type: "ocr_quality_concern", description: `${ocrCount} OCR-quality concern(s) (scanned/image-based text) detected` });
+      issueCount++;
+    }
+
+    const ocrQuality: "good" | "fair" | "poor" =
+      ocrCount > 2 || ILIEGIBLE_RE.test(text) ? "poor"
+      : ocrCount > 0 ? "fair"
+      : "good";
+
+    const relatedAgreements = [
+      ...new Set((text.match(RELATED_AGREEMENTS_RE) || []).map((s) => s.trim())),
+    ];
+
+    result.push({
+      documentType: typeMatch?.[0]?.trim() ?? "Unidentified",
+      version: versionMatch?.[1] ?? "Unversioned",
+      executionStatus: execMatches?.length ? "Referenced (verify actual signature pages)" : "Unknown",
+      governingLaw: lawMatch?.[1]?.trim() ?? "Not stated",
+      effectiveDate: effMatch?.[1] ?? "Not stated",
+      parties: [...new Set(parties)],
+      affiliates: countMatches(text, AFFILIATE_RE) > 0 ? ["Affiliates referenced in text"] : [],
+      relatedAgreements,
+      missingSchedules: missingSchedules.slice(0, 20),
+      missingExhibits: missingExhibits.slice(0, 20),
+      missingAmendments,
+      issues: issues.slice(0, 12),
+      ocrQuality,
+      duplicates: [],
+    });
+  }
+
+  // Duplicate detection across documents (normalized content hash)
+  const seenTexts = new Map<string, string[]>();
+  for (const doc of documents) {
+    const key = doc.text.replace(/\s+/g, " ").trim().slice(0, 1000).toLowerCase();
+    if (!seenTexts.has(key)) seenTexts.set(key, []);
+    seenTexts.get(key)!.push(doc.filename);
+  }
+  for (const [, names] of seenTexts) {
+    if (names.length > 1) {
+      const [primary, ...rest] = names;
+      const item = result.find((r) => r.documentType && rest.length && primary);
+      if (item) item.duplicates = rest;
+    }
+  }
+
+  return { documents: result, inventoryIssues: issueCount };
+}
+
+export function renderInventory(result: InventoryResult): string {
+  const lines: string[] = [];
+  lines.push("### DOCUMENT INVENTORY (STAGE 1)");
+  lines.push("");
+  for (const d of result.documents) {
+    lines.push(`**${d.documentType}** — ${d.version}`);
+    lines.push("");
+    lines.push(`- **Execution status:** ${d.executionStatus}`);
+    lines.push(`- **Governing law:** ${d.governingLaw}`);
+    lines.push(`- **Effective date:** ${d.effectiveDate}`);
+    lines.push(`- **OCR quality:** ${d.ocrQuality}`);
+    if (d.parties.length) lines.push(`- **Parties:** ${d.parties.join(", ")}`);
+    if (d.affiliates.length) lines.push(`- **Affiliates:** ${d.affiliates.join(", ")}`);
+    if (d.relatedAgreements.length) lines.push(`- **Related agreements:** ${[...new Set(d.relatedAgreements)].join(", ")}`);
+    if (d.duplicates.length) lines.push(`- **⚠ Duplicates:** ${d.duplicates.join(", ")}`);
+    if (d.missingSchedules.length) lines.push(`- **Missing schedules/exhibits:** ${d.missingSchedules.join("; ")}`);
+    if (d.missingAmendments.length) lines.push(`- **Missing amendments:** ${d.missingAmendments.join("; ")}`);
+    if (d.issues.length) {
+      lines.push(`- **Issues (${d.issues.length}):**`);
+      for (const iss of d.issues) lines.push(`  - ${iss.description}`);
+    }
+    lines.push("");
+  }
+  if (result.inventoryIssues > 0) {
+    lines.push(`_Note: ${result.inventoryIssues} inventory issue(s) flagged — see list above. Document inventory should be completed before substantive legal analysis._`);
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STAGE 2 — TRANSACTION MAPPING
+// Entities (Buyer/Seller/Target/Parent/Guarantors/Equity holders), structure
+// (stock/asset/merger/tender/JV/spin-off/carve-out), economics (purchase price,
+// escrow, holdbacks, earnout, working capital, net debt, rollover equity), and
+// timeline (signing, closing, outside date, milestones, regulatory deadlines).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface TransactionMappingResult {
+  entities: { role: string; name: string }[];
+  structure: { type: string; confidence: "HIGH" | "MEDIUM" | "LOW"; indicators: string[] };
+  economics: { purchasePrice: string; escrow: string; holdbacks: string; earnout: string; workingCapital: string; netDebt: string; rolloverEquity: string; other: string[] };
+  timeline: { signing: string; closing: string; outsideDate: string; milestones: string[]; regulatoryDeadlines: string[] };
+  missingEconomics: string[];
+}
+
+const STRUCTURE_TRIGGERS: { type: string; patterns: RegExp[] }[] = [
+  { type: "Statutory Merger", patterns: [/plan of merger/i, /surviving corporation/i, /articles of merger/i, /section 251/i, /certificate of merger/i] },
+  { type: "Stock / Equity Purchase", patterns: [/purchase and sale of (?:all of the |100% of the )?(?:shares|stock|membership interests|equity interests|units)/i, /all (?:of the )?(?:issued and outstanding )?(?:shares|stock|units|membership interests)/i] },
+  { type: "Asset Purchase", patterns: [/purchased assets/i, /assumed liabilities/i, /excluded assets/i, /assignment and assumption/i, /section 1060/i, /bulk sales/i] },
+  { type: "Tender Offer", patterns: [/tender offer/i, /exchange offer/i, /commencement date/i] },
+  { type: "Joint Venture", patterns: [/joint venture/i, /partnership agreement/i, /limited liability company agreement/i] },
+  { type: "Spin-off / Carve-out", patterns: [/spin-?off/i, /carve-?out/i, /demerger/i, /separation agreement/i] },
+];
+
+const ECONOMY_PATTERNS: { key: keyof TransactionMappingResult["economics"]; label: string; patterns: RegExp[] }[] = [
+  { key: "purchasePrice", label: "Purchase Price", patterns: [/(?:purchase price|aggregate consideration|base purchase price|enterprise value|equity value)\s*(?:shall be|is|of|equal to)\s*\$?([\d,.]+(?:\s*(?:million|billion|mm|m|bn))?)/i, /\$\s?([\d,]+(?:\s*(?:million|billion|mm|m|bn))?)\s*(?:in\s+)?(?:cash\s+)?(?:purchase\s+price|aggregate\s+consideration)/i] },
+  { key: "escrow", label: "Escrow", patterns: [/(?:escrow|indemnity escrow|holdback escrow)\s*(?:shall be|of|in the amount of|equal to)\s*\$?([\d,.]+(?:\s*(?:million|billion|mm|m|bn))?)/i, /\$\s?([\d,]+)\s*(?:escrow)/i] },
+  { key: "holdbacks", label: "Holdbacks", patterns: [/(?:holdback|hold back|retention)\s*(?:of|shall be|in the amount of)\s*\$?([\d,.]+(?:\s*(?:million|billion|mm|m|bn))?)/i] },
+  { key: "earnout", label: "Earnout", patterns: [/(?:earnout|earn-out)\s*(?:consideration|payment)?\s*(?:of|shall be|equal to|up to)\s*\$?([\d,.]+(?:\s*(?:million|billion|mm|m|bn))?)/i, /\bearnout\b/i] },
+  { key: "workingCapital", label: "Working Capital", patterns: [/(?:working capital)(?:\s*(?:target|peg|adjustment|true-up))?\s*(?:of|equal to|shall be|target)?\s*\$?([\d,.]+(?:\s*(?:million|billion|mm|m|bn))?)/i, /\bworking capital (?:target|peg)\b/i] },
+  { key: "netDebt", label: "Net Debt", patterns: [/(?:net debt|net cash)\s*(?:shall be|of|equal to|target)?\s*\$?([\d,.]+(?:\s*(?:million|billion|mm|m|bn))?)/i, /\bnet (?:debt|cash)\b/i] },
+  { key: "rolloverEquity", label: "Rollover Equity", patterns: [/(?:rollover equity|roll-over equity|rolled over|rollover shares?)\s*(?:of)?\s*\$?([\d,.]+(?:\s*(?:million|billion|mm|m|bn))?)/i, /\brollover equity\b/i] },
+];
+
+const TIMELINE_PATTERNS: { key: keyof TransactionMappingResult["timeline"]; label: string; patterns: RegExp[] }[] = [
+  { key: "signing", label: "Signing", patterns: [/(?:signing date|date of signing|execution date|date of execution)\s*(?:shall be|is|on)?\s*([A-Z][a-z]+\s+\d{1,2},?\s+\d{4})/i, /\b(?:signing|execution)\s+date\b/i] },
+  { key: "closing", label: "Closing", patterns: [/(?:closing date|date of closing|date of the closing)\s*(?:shall be|is|on)?\s*([A-Z][a-z]+\s+\d{1,2},?\s+\d{4})/i, /the closing (?:shall|will) (?:take place|occur|be held) on\s+([A-Z][a-z]+\s+\d{1,2},?\s+\d{4})/i] },
+  { key: "outsideDate", label: "Outside Date", patterns: [/(?:outside date|drop-dead date|termination date)\s*(?:shall be|is|on)?\s*([A-Z][a-z]+\s+\d{1,2},?\s+\d{4}|\[[^\]]+\])/i, /\boutside date\b/i] },
+];
+
+export function runTransactionMapping(text: string): TransactionMappingResult {
+  // Entities
+  const entities: { role: string; name: string }[] = [];
+  const roleRe = /["']?(Buyer|Purchaser|Acquirer|Seller|Target|Company|Parent|Guarantor|Equity Holder|Stockholder|Shareholder|Member)["']?\s*(?:shall mean|means|is)\s+(?:the\s+)?([A-Z][A-Za-z0-9\s&.'-]{2,60}?)\s*(?:,|;|\.)/gi;
+  let rm: RegExpExecArray | null;
+  const seenRoles = new Set<string>();
+  while ((rm = roleRe.exec(text)) !== null) {
+    const role = rm[1];
+    const name = rm[2].trim().replace(/\s+/g, " ");
+    const key = role.toLowerCase();
+    if (seenRoles.has(key)) continue;
+    seenRoles.add(key);
+    entities.push({ role, name });
+  }
+
+  // Structure
+  const candidates = STRUCTURE_TRIGGERS
+    .filter(({ patterns }) => patterns.some((p) => p.test(text)))
+    .map(({ type }) => type);
+  let structureType = candidates[0] ?? "Unclassified";
+  let confidence: "HIGH" | "MEDIUM" | "LOW" = "LOW";
+  if (candidates.length === 1) confidence = "HIGH";
+  else if (candidates.length > 1) {
+    structureType = candidates.join(" / ");
+    confidence = "MEDIUM";
+  }
+  const structure = {
+    type: structureType,
+    confidence,
+    indicators: candidates,
+  };
+
+  // Economics
+  const economics: TransactionMappingResult["economics"] = {
+    purchasePrice: "Not found in text",
+    escrow: "None identified",
+    holdbacks: "None identified",
+    earnout: "None identified",
+    workingCapital: "Not specified",
+    netDebt: "Not specified",
+    rolloverEquity: "None identified",
+    other: [],
+  };
+  for (const { key, patterns } of ECONOMY_PATTERNS) {
+    for (const p of patterns) {
+      const m = text.match(p);
+      if (m) {
+        economics[key] = m[1] ?? "Referenced (amount not stated)";
+        break;
+      }
+    }
+  }
+
+  // Timeline
+  const timeline: TransactionMappingResult["timeline"] = {
+    signing: "Not specified",
+    closing: "Not specified",
+    outsideDate: "Not specified",
+    milestones: [],
+    regulatoryDeadlines: [],
+  };
+  for (const { key, patterns } of TIMELINE_PATTERNS) {
+    for (const p of patterns) {
+      const m = text.match(p);
+      if (m) {
+        timeline[key] = m[1] ?? "Referenced";
+        break;
+      }
+    }
+  }
+  const milestoneRe = /(?:condition(?:s)? to closing|milestone|regulatory approval (?:deadline|date)|second request|waiting period)\b/gi;
+  timeline.regulatoryDeadlines = countMatches(text, /(?:hsr|cfius|antitrust|regulatory approval|waiting period|second request)\b/gi) > 0
+    ? ["Regulatory review referenced (HSR/CFIUS/antitrust) — confirm filing deadlines"]
+    : [];
+  const milestones = text.match(milestoneRe);
+  if (milestones) timeline.milestones = [...new Set(milestones.map((s) => s.trim()))].slice(0, 8);
+
+  const missingEconomics = (Object.entries(economics) as [string, string][]).filter(
+    ([, v]) => /Not found|None identified|Not specified/i.test(v)
+  ).map(([k]) => k);
+
+  return { entities, structure, economics, timeline, missingEconomics };
+}
+
+export function renderTransactionMapping(result: TransactionMappingResult): string {
+  const lines: string[] = [];
+  lines.push("### TRANSACTION MAPPING (STAGE 2)");
+  lines.push("");
+  lines.push(`**Structure:** ${result.structure.type} (confidence: ${result.structure.confidence})`);
+  if (result.structure.indicators.length) lines.push(`**Indicators:** ${result.structure.indicators.join(", ")}`);
+  lines.push("");
+  if (result.entities.length) {
+    lines.push("**Entities:**");
+    lines.push(mdTable(["Role", "Entity"], result.entities.map((e) => [e.role, e.name])));
+    lines.push("");
+  }
+  lines.push("**Economics:**");
+  lines.push(mdTable(
+    ["Component", "Value"],
+    (Object.entries(result.economics) as [string, string][]).map(([k, v]) => [k.replace(/([A-Z])/g, " $1").trim(), v])
+  ));
+  lines.push("");
+  lines.push("**Timeline:**");
+  lines.push(mdTable(
+    ["Event", "Value"],
+    (Object.entries(result.timeline) as [string, unknown][]).filter(([k]) => k === "signing" || k === "closing" || k === "outsideDate").map(([k, v]) => [k.replace(/([A-Z])/g, " $1").trim(), String(v)])
+  ));
+  if (result.timeline.milestones.length) lines.push(`**Milestones:** ${result.timeline.milestones.join(", ")}`);
+  if (result.timeline.regulatoryDeadlines.length) lines.push(`**Regulatory deadlines:** ${result.timeline.regulatoryDeadlines.join("; ")}`);
+  lines.push("");
+  if (result.missingEconomics.length) {
+    lines.push(`**Missing economic infrastructure:** ${result.missingEconomics.join(", ")} — _economic engine is incomplete in the provided text._`);
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STAGE 10 — NEGOTIATION ANALYSIS
+// Buyer leverage, Seller leverage, missing protections, one-sided provisions,
+// alternative drafting, commercial compromises, market alternatives.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface NegotiationFindingT {
+  type: "buyer_leverage" | "seller_leverage" | "missing_protection" | "one_sided" | "alternative_drafting" | "commercial_compromise";
+  description: string;
+  evidence: string;
+  suggestedApproach: string;
+}
+
+export interface NegotiationResult {
+  findings: NegotiationFindingT[];
+  buyerLeverage: number; // 0-10
+  sellerLeverage: number; // 0-10
+}
+
+const BUYER_LEVERAGE_PATTERNS: RegExp[] = [
+  /\bbuyer['"]?s\s+(?:sole\s+and\s+absolute\s+)?discretion\b/i,
+  /\bbuyer\s+(?:may|shall\s+be\s+entitled\s+to)\s+(?:terminate|walk\s+away|reject|withdraw)/i,
+  /\bbuyer\s+shall\s+have\s+the\s+right\b/i,
+  /\bexclusive\s+remedy\b[^.]{0,60}\bbuyer\b/i,
+  /\bsatisfaction\s+(?:in\s+)?(?:of\s+)?(?:buyer|purchaser)/i,
+];
+const SELLER_LEVERAGE_PATTERNS: RegExp[] = [
+  /\bseller['"]?s\s+(?:sole\s+and\s+absolute\s+)?discretion\b/i,
+  /\bseller\s+(?:may|shall\s+be\s+entitled\s+to)\s+(?:terminate|walk\s+away|retain|withdraw)/i,
+  /\bno\s+relief\b[^.]{0,60}\bseller\b/i,
+  /\b(?:seller|seller's)\s+sole\s+discretion\b/i,
+  /\bwithout\s+(?:the\s+)?(?:buyer's\s+)?consent\b[^.]{0,60}\bseller\b/i,
+];
+const ONE_SIDED_PATTERNS: RegExp[] = [
+  /\b(?:buyer|seller)\s+shall\s+have\s+the\s+sole\s+right\s+(?:to\s+)?terminate\b/i,
+  /(?:termination\s+rights?)[^.]{0,60}(?:only\s+(?:the\s+)?(?:buyer|seller))\b/i,
+  /(?:indemnification|indemnity)\s+(?:obligations?)[^.]{0,80}\b(?:buyer|seller)\b[^.]{0,40}\b(?:only)\b/i,
+];
+
+export function runNegotiationAnalysis(text: string): NegotiationResult {
+  const findings: NegotiationFindingT[] = [];
+
+  // Buyer leverage
+  for (const p of BUYER_LEVERAGE_PATTERNS) {
+    const snips = evidenceSnippets(text, p, 1);
+    if (snips.length) {
+      findings.push({
+        type: "buyer_leverage",
+        description: "Buyer holds unilateral/strong discretion or exit leverage",
+        evidence: snips[0],
+        suggestedApproach: "Acknowledge as Buyer leverage; note residual challenge risk (implied covenant of good faith in some jurisdictions).",
+      });
+      break;
+    }
+  }
+  // Seller leverage
+  for (const p of SELLER_LEVERAGE_PATTERNS) {
+    const snips = evidenceSnippets(text, p, 1);
+    if (snips.length) {
+      findings.push({
+        type: "seller_leverage",
+        description: "Seller holds unilateral/strong discretion or exit leverage",
+        evidence: snips[0],
+        suggestedApproach: "Negotiate mutual termination/cure rights and remove seller-only discretion.",
+      });
+      break;
+    }
+  }
+  // One-sided provisions
+  for (const p of ONE_SIDED_PATTERNS) {
+    const snips = evidenceSnippets(text, p, 1);
+    if (snips.length) {
+      findings.push({
+        type: "one_sided",
+        description: "One-sided termination/indemnity provision detected",
+        evidence: snips[0],
+        suggestedApproach: "Add reciprocity: match cure periods, termination triggers, and carve-outs on both sides.",
+      });
+      break;
+    }
+  }
+  // Missing protections (market standard expectations)
+  const missingChecks: { label: string; re: RegExp; approach: string }[] = [
+    { label: "Standard indemnification framework", re: /\bindemnif\w+\b/i, approach: "Add a mutual indemnification article with cap, basket, and survival." },
+    { label: "Representation survival period", re: /\bsurvival\b/i, approach: "Add a survival clause (general reps 18–24mo; fundamental/tax longer)." },
+    { label: "Working capital / price adjustment mechanism", re: /\bworking capital\b/i, approach: "Define working capital peg, target, and true-up mechanics." },
+    { label: "Earnout formula", re: /\bearnout\b/i, approach: "If earnout is intended, specify thresholds, tiers, and dispute mechanism." },
+    { label: "Security for indemnity (escrow/holdback)", re: /\bescrow\b|\bholdback\b/i, approach: "Add escrow or holdback sized to risk exposure." },
+    { label: "Non-compete / non-solicit", re: /\bnon-?compete\b|\bnon-?solicit/i, approach: "Draft enforceable non-compete/non-solicit with defined scope." },
+    { label: "Confidentiality (post-close)", re: /\bconfidentiality\b/i, approach: "Add post-closing confidentiality covenant with survival." },
+    { label: "Dispute resolution", re: /\b(?:dispute resolution|arbitration|governing law)\b/i, approach: "Specify governing law, venue, and dispute mechanism." },
+  ];
+  for (const mc of missingChecks) {
+    if (!mc.re.test(text)) {
+      findings.push({
+        type: "missing_protection",
+        description: `Missing market-standard protection: ${mc.label}`,
+        evidence: "Not found in text",
+        suggestedApproach: mc.approach,
+      });
+    }
+  }
+  // Alternative drafting suggestions for detected high-risk clauses
+  if (/\b(?:as is|as-is|where is|where-is)\b/i.test(text)) {
+    findings.push({
+      type: "alternative_drafting",
+      description: "As-Is / Where-Is clause present — consider carve-out preserving indemnity recourse for known defects",
+      evidence: ctx(text, text.search(/\b(?:as is|as-is|where is|where-is)\b/i)),
+      suggestedApproach: "Qualify the as-is disclaimer so it does not waive indemnity for breach of reps/warranties.",
+    });
+  }
+  if (/\b(?:knowledge\s+qualifier|to\s+the\s+knowledge\s+of)\b/i.test(text)) {
+    findings.push({
+      type: "alternative_drafting",
+      description: "Knowledge qualifiers on reps — consider limiting to defined 'Knowledge' concept",
+      evidence: ctx(text, text.search(/\b(?:knowledge\s+qualifier|to\s+the\s+knowledge\s+of)\b/i)),
+      suggestedApproach: "Define 'Knowledge' to include reasonable inquiry by designated officers.",
+    });
+  }
+
+  // Leverage scores (0-10 heuristic)
+  let buyerLeverage = 3;
+  let sellerLeverage = 3;
+  if (findings.some((f) => f.type === "buyer_leverage")) buyerLeverage = 7;
+  if (findings.some((f) => f.type === "seller_leverage")) sellerLeverage = 7;
+  const oneSided = findings.filter((f) => f.type === "one_sided").length;
+  if (oneSided > 0) {
+    const oneSidedEvidence = findings.find((f) => f.type === "one_sided")?.evidence ?? "";
+    if (/buyer/i.test(oneSidedEvidence)) buyerLeverage = Math.max(buyerLeverage, 8);
+    if (/seller/i.test(oneSidedEvidence)) sellerLeverage = Math.max(sellerLeverage, 8);
+  }
+
+  return { findings, buyerLeverage, sellerLeverage };
+}
+
+export function renderNegotiation(result: NegotiationResult): string {
+  const lines: string[] = [];
+  lines.push("### NEGOTIATION ANALYSIS (STAGE 10)");
+  lines.push("");
+  lines.push(`**Buyer Leverage:** ${result.buyerLeverage}/10  **Seller Leverage:** ${result.sellerLeverage}/10`);
+  lines.push("");
+  if (!result.findings.length) {
+    lines.push("_No directional leverage findings — balanced or standard drafting._");
+    lines.push("");
+    return lines.join("\n");
+  }
+  for (const f of result.findings) {
+    lines.push(`- **${f.type.replace(/_/g, " ")}:** ${f.description}`);
+    lines.push(`  - Evidence: ${f.evidence.slice(0, 180)}`);
+    lines.push(`  - Suggested approach: ${f.suggestedApproach}`);
+  }
+  lines.push("");
+  lines.push("_Negotiation strategy is separate from legal observations. Confirm commercial intent before pursuing any counter-language._");
+  lines.push("");
+  return lines.join("\n");
+}

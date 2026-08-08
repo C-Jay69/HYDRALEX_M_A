@@ -1207,6 +1207,87 @@ export interface ScoredFinding {
   disposition: 'OMITTED' | 'ALLOCATED_ADVERSE';
 }
 
+/**
+ * Deterministic scoring-condition detector (Stage 11 Quality Assurance).
+ * Scans the raw contract text and returns the ScoringCondition[] set that
+ * drives validateScore(). This is the server-side calibration layer that the
+ * LLM report's raw score is validated against — prevents the model from
+ * drifting above/below the mechanically-derived score.
+ */
+export function detectScoringConditions(text: string): ScoringCondition[] {
+  const conditions: ScoringCondition[] = [];
+  const t = text;
+
+  // Indemnification framework: absent unless indemnify/indemnification present
+  if (!/\bindemnif\w*\b/i.test(t)) {
+    conditions.push("missing_framework");
+  }
+  // Cap: only relevant when a framework exists
+  if (/\bindemnif\w*\b/i.test(t) && !/\b(?:cap|aggregate\s+liability|maximum\s+liability)\b/i.test(t)) {
+    conditions.push("missing_cap_only");
+  }
+  if (/\bindemnif\w*\b/i.test(t) && !/\bbasket\b|\bthreshold\b/i.test(t)) {
+    conditions.push("missing_basket_only");
+  }
+  if (/\bindemnif\w*\b/i.test(t) && !/\bsurvival\b|\bperiod\s+of\s+survival\b/i.test(t)) {
+    conditions.push("missing_survival_only");
+  }
+
+  // Earnout mechanics
+  if (/\bearn[- ]?out\b/i.test(t)) {
+    if (!/\b(?:adjusted\s+ebitda|revenue|ebitda|profit|formula)\b/i.test(t)) {
+      conditions.push("earnout_no_metrics");
+    }
+    if (!/\b(?:dispute|independent\s+accountant|accountant|auditor)\b/i.test(t)) {
+      conditions.push("earnout_no_dispute_mech");
+    }
+  } else if (/\b(?:purchase\s+price|consideration)\b/i.test(t)) {
+    conditions.push("earnout_seller_no_control");
+  }
+
+  // Termination / outside date
+  if (!/\boutside\s+date\b|\bdrop[- ]dead\b/i.test(t)) {
+    conditions.push("missing_outside_date");
+  }
+  if (!/\bterminat(?:ion|e)\b/i.test(t)) {
+    conditions.push("missing_termination");
+  }
+
+  // Reps quality
+  if (/\brepresentations?\s+and\s+warranties\b/i.test(t) && /(?:knowledge\s+qualifier|to\s+the\s+knowledge\s+of)\b/i.test(t)) {
+    conditions.push("weak_reps");
+  }
+
+  // Broad liability assumption
+  if (/\b(?:assumes?|accepted|agrees\s+to\s+accept)\b/i.test(t) && /(?:all\s+(?:liabilities|obligations)|all\s+debts)\b/i.test(t)) {
+    conditions.push("all_liabilities_assumed");
+  }
+
+  // Missing schedules
+  if (/\b(?:Schedule|Exhibit|Annex)\b/i.test(t) && !/\b(?:disclosure\s+schedules?\b|attached\s+hereto|set\s+forth\s+on)\b/i.test(t)) {
+    conditions.push("missing_schedules");
+  }
+
+  // Contradiction / indemnity reversal / diligence-out
+  if (/\b(?:notwithstanding|except\s+as\s+provided)\b/i.test(t) && /conflict|contradict/i.test(t)) {
+    conditions.push("contradiction_detected");
+  }
+  if (/\bbuyer\s+(?:shall\s+)?indemnif\w*\s+(?:the\s+)?seller\b/i.test(t)) {
+    conditions.push("indemnity_reversal");
+  }
+  if (/\b(?:diligence|due\s+diligence)\b/i.test(t) && /(?:terminat(?:e|ion).{0,80}due\s+diligence|walk\s+away)\b/i.test(t)) {
+    conditions.push("unrestricted_diligence_exit");
+  }
+
+  // Boilerplate
+  if (!/\bseverability\b/i.test(t)) conditions.push("missing_severability");
+  if (!/\bnotice(?:s)?\b/i.test(t)) conditions.push("missing_notices");
+  if (!/\bcounterparts?\b/i.test(t)) conditions.push("missing_counterparts");
+  if (!/\bnon-?reliance\b/i.test(t)) conditions.push("missing_non_reliance");
+
+  return [...new Set(conditions)];
+}
+
 export interface ValidateScoreInput {
   rawScore: number;
   tier: 1 | 2 | 3 | 4 | 5;
