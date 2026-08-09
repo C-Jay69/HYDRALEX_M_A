@@ -33,6 +33,20 @@ describe("validateFinalReport", () => {
     expect(errors.some((e) => e.includes("Numeric assertion") && e.includes("10%"))).toBe(false);
   });
 
+  test("allows $240M shorthand when contract states $240,000,000", () => {
+    const contract = "The Purchase Price is $240,000,000, paid in cash.";
+    const report = "Total consideration of $240M at closing.";
+    const errors = validateFinalReport(report, contract, NOW, []);
+    expect(errors.some((e) => e.includes("Numeric assertion") && e.includes("$240M"))).toBe(false);
+  });
+
+  test("still flags $240M when contract uses a different figure", () => {
+    const contract = "The Purchase Price is $30,000,000.";
+    const report = "Total consideration of $240M at closing.";
+    const errors = validateFinalReport(report, contract, NOW, []);
+    expect(errors.some((e) => e.includes("Numeric assertion") && e.includes("$240M"))).toBe(true);
+  });
+
   test("flags dangerous categorical legal language", () => {
     const report = "The buyer has no legal remedy under this agreement.";
     const errors = validateFinalReport(report, "", NOW, []);

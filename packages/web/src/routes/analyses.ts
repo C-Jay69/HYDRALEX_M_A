@@ -45,6 +45,39 @@ import { getQuotaUsage, incrementAnalysisUsage } from "../lib/quota.js";
 import { userMeta } from "../database/schema.js";
 import { createHash } from "crypto";
 
+/** Robust JSON extraction: direct parse, then outermost balanced object, then
+ *  trailing-comma / single-quote cleanup. Returns null when all fail. */
+function safeParseJson(raw: string): any {
+  if (!raw) return null;
+  let text = raw
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/, "")
+    .trim();
+  try {
+    return JSON.parse(text);
+  } catch {
+    /* fall through */
+  }
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try {
+      return JSON.parse(text.slice(start, end + 1));
+    } catch {
+      /* fall through */
+    }
+  }
+  try {
+    const cleaned = text
+      .replace(/,\s*([}\]])/g, "$1")
+      .replace(/:\s*'([^']*)'/g, ':"$1"')
+      .replace(/\/\/[^\n]*/g, "");
+    return JSON.parse(cleaned);
+  } catch {
+    return null;
+  }
+}
+
 /** Returns true if the user is an admin — admins bypass all quota checks. */
 async function isAdmin(userId: string): Promise<boolean> {
   const [meta] = await db
@@ -412,7 +445,8 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
   // Programmatic guardrail on the Critic's reconciliation output (prompting alone
   // won't reliably stop it claiming a miss when Agent 1 already found the issue).
   try {
-    const criticJson = JSON.parse(llm2Raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
+    const criticJson = safeParseJson(llm2Raw);
+    if (!criticJson) throw new Error("unparseable");
     const criticErrors = validateCriticOutput(criticJson);
     if (criticErrors.length > 0) {
       console.warn(`[CRITIC GUARDRAIL] ${criticErrors.length} contradiction(s) in Critic output for analysis ${id}:`);
@@ -449,7 +483,8 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
 
   // Cross-layer reconciler
   try {
-    const analystJson = JSON.parse(llm1Raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
+    const analystJson = safeParseJson(llm1Raw);
+    if (!analystJson) throw new Error("unparseable");
 
     const rawSuppressions: ReconcilerSuppression[] = (analystJson.suppressions ?? []).map(
       (s: { rule?: string; item?: string; suppression_status?: string; applied?: boolean; rationale?: string }) => ({
@@ -581,7 +616,8 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
     // published unless it points at direct contractual evidence.
     const gateFailures: string[] = [];
     try {
-      const analystJson = JSON.parse(llm1Raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
+      const analystJson = safeParseJson(llm1Raw);
+      if (!analystJson) throw new Error("unparseable");
       const findings = analystJson.findings ?? [];
       const ledger: ContractEvidence[] = findings.map((f: any, i: number) => ({
         id: f.finding_id ?? `A1-${String(i + 1).padStart(3, "0")}`,
@@ -617,17 +653,31 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
     }
 
     const allErrors = [...qaErrors, ...gateFailures];
+    const FATAL_PREFIXES = [
+      "Potential expired proposed transaction date",
+      "High-risk categorical legal assertion",
+      "Seller is not a validated defined party",
+      "Material finding",
+    ];
+    const fatalErrors = allErrors.filter((e) => FATAL_PREFIXES.some((p) => e.startsWith(p)));
+    const advisoryErrors = allErrors.filter((e) => !fatalErrors.includes(e));
+    const logLimit = 25;
     if (allErrors.length > 0) {
-      console.warn(`[SANITY GATE] ${allErrors.length} QA issue(s) on analysis ${id}:`);
-      for (const e of allErrors.slice(0, 20)) console.warn(`  - ${e}`);
-      if (allErrors.length > 20) console.warn(`  ... and ${allErrors.length - 20} more`);
+      console.warn(`[SANITY GATE] ${allErrors.length} QA issue(s) on analysis ${id} (${fatalErrors.length} fatal, ${advisoryErrors.length} advisory):`);
+      for (const e of [...fatalErrors, ...advisoryErrors].slice(0, logLimit)) console.warn(`  - ${e}`);
+      if (allErrors.length > logLimit) console.warn(`  ... and ${allErrors.length - logLimit} more`);
+    }
 
-      // One bounded revision pass instead of just logging the failures.
+    // LLM revision runs ONLY on fatal issues (expired dates, dangerous legal
+    // assertions, invented obligors, unpublished material findings). Numeric
+    // precision findings are advisory: logged + audited, but they should not
+    // trigger a ~13-minute full-report regeneration over market-benchmark figures.
+    if (fatalErrors.length > 0) {
       try {
-        const revised = await runSanityRevision(client, reportMarkdown, contractText, allErrors.slice(0, 60));
+        const revised = await runSanityRevision(client, reportMarkdown, contractText, fatalErrors.slice(0, 40));
         if (revised.trim().length > 100) {
           reportMarkdown = revised;
-          console.log(`[SANITY GATE] Analysis #${id} revised after QA (${allErrors.length} issue(s) addressed).`);
+          console.log(`[SANITY GATE] Analysis #${id} revised after QA (${fatalErrors.length} fatal issue(s) addressed).`);
         }
       } catch (err) {
         console.warn("[SANITY GATE] Revision pass failed — keeping original report:", err);
@@ -637,7 +687,7 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
       action: "sanity_gate",
       resourceType: "analysis",
       resourceId: id,
-      metadata: { qaIssues: qaErrors.length, gateFailures: gateFailures.length, revised: allErrors.length > 0 },
+      metadata: { qaIssues: qaErrors.length, gateFailures: gateFailures.length, fatal: fatalErrors.length, advisory: advisoryErrors.length, revised: fatalErrors.length > 0 },
     }).catch(() => {});
   } catch (err) {
     console.warn("[SANITY GATE] Could not run final reliability gate:", err);

@@ -2641,6 +2641,41 @@ const DANGEROUS_CLAIM_RES = [
   /100%\s+(?:probability|certain|certainty)/i,
 ];
 
+/** Collect canonical numeric values from a text, expanding M/B/K/words so
+ *  "$240M" and "$240,000,000" compare equal. */
+function collectNumericValues(text: string): Set<number> {
+  const values = new Set<number>();
+  const re =
+    /\$?\s*[\d,]+(?:\.\d+)?\s*(?:million|billion|thousand|M|B|K|%)?/gi;
+  for (const m of text.matchAll(re)) {
+    const base = parseFloat(m[0].replace(/[^0-9.]/g, ""));
+    if (isNaN(base)) continue;
+    values.add(base);
+    const unit = m[0].match(/[mbk%]/i)?.[0];
+    if (unit === "M" || unit === "m") values.add(base * 1_000_000);
+    if (unit === "B" || unit === "b") values.add(base * 1_000_000_000);
+    if (unit === "K" || unit === "k") values.add(base * 1_000);
+  }
+  return values;
+}
+
+/** True when a numeric claim is supported by (normalized) values in the source. */
+function numericClaimSupported(claim: string, contractValues: Set<number>): boolean {
+  const m = claim.match(/^(\$)?\s*([\d,]+(?:\.\d+)?)\s*([MKB%]?)$/i);
+  if (!m) return false;
+  const base = parseFloat(m[2].replace(/,/g, ""));
+  if (isNaN(base)) return false;
+  const unit = (m[3] ?? "").toUpperCase();
+  const value =
+    unit === "M" ? base * 1_000_000
+    : unit === "B" ? base * 1_000_000_000
+    : unit === "K" ? base * 1_000
+    : base;
+  if (contractValues.has(value) || contractValues.has(base)) return true;
+  if (unit === "%" && (contractValues.has(base / 100) || contractValues.has(base * 100))) return true;
+  return false;
+}
+
 /**
  * Deterministic post-processing checks for the final report. Returns a list of
  * QA issues; an empty array means the report passed. Checks are conservative —
@@ -2668,10 +2703,12 @@ export function validateFinalReport(
     }
   }
 
-  // 2. Detect unsupported precision patterns (allow figures in source contract)
+  // 2. Detect unsupported precision patterns. Values are normalized (K/M/B,
+  //    commas, trailing zeros) so "$240M" matches "$240,000,000" in the source.
+  const contractValues = collectNumericValues(contractText);
   const numericClaims = report.match(NUMERIC_CLAIM_RE) ?? [];
   for (const claim of numericClaims) {
-    if (!contractText.includes(claim)) {
+    if (!numericClaimSupported(claim, contractValues)) {
       errors.push(
         `Numeric assertion requires source/benchmark verification: ${claim}`
       );
