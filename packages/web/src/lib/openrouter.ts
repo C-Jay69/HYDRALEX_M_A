@@ -2051,3 +2051,705 @@ export function stripScaffolding(renderedSection: string): { cleaned: string; le
   return { cleaned, leaks };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FINAL REPORT RELIABILITY / LEGAL SANITY GATE
+// Run after specialist analysis + deterministic modules, before final save.
+// Purpose: prevent the final report from saying more than the supplied contract
+// and transaction structure support.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const MA_FINAL_SANITY_GATE = `
+You are the FINAL RELIABILITY GATE for an M&A contract analysis.
+
+You are not being asked to discover as many new risks as possible.
+Your primary job is to prevent the final report from saying more than
+the supplied contract and applicable transaction structure support.
+
+INPUTS:
+1. Original contract text
+2. Extracted deal structure
+3. Defined parties/entities
+4. Specialist findings
+5. Draft final report
+6. Current analysis date
+
+============================================================
+1. EVIDENCE CLASSIFICATION — MANDATORY
+============================================================
+
+Classify every substantive finding internally as exactly one:
+
+A. EXPRESS
+Directly stated in the contract.
+
+B. CONTRACTUAL_INFERENCE
+Reasonably follows from two or more actual contractual provisions.
+
+C. MARKET_COMPARISON
+Comparison with customary M&A drafting, but not itself a fact
+established by this contract.
+
+D. EXTERNAL_FACT_REQUIRED
+Could be important but cannot be determined from the provided
+documents alone.
+
+E. UNSUPPORTED
+Not established by the contract, transaction structure, supplied data,
+or a cited authoritative external source.
+
+Rules:
+- A and B may support scored findings.
+- C must be identified as market/customary comparison and must not be
+  presented as a legal requirement.
+- D must be reported as "requires confirmation", "not assessable from
+  provided documents", or equivalent. D MUST NOT be converted to LOW,
+  HIGH, PRESENT, ABSENT, LIKELY, or REQUIRED without additional facts.
+- E must be deleted.
+- Never convert missing information into affirmative facts.
+
+============================================================
+2. ABSENCE IS NOT THE SAME AS ADVERSE ALLOCATION
+============================================================
+
+For every missing provision classify it as:
+
+OMITTED:
+The document does not address it.
+
+AFFIRMATIVELY_ADVERSE:
+The contract expressly allocates the issue against the review party.
+
+COMPOUNDED:
+An omission materially worsens an EXPRESS adverse provision.
+
+INAPPLICABLE:
+Not ordinarily required/relevant given the transaction structure.
+
+UNKNOWN:
+Cannot determine applicability from supplied facts.
+
+Do not describe an omitted provision as "hostile", "weaponized",
+"toxic", "trap", or similar unless contractual language affirmatively
+creates the adverse allocation.
+
+For skeleton, term-sheet, sample, preliminary, abbreviated or stress-test
+documents, apply draft-completeness calibration. A missing provision
+should not automatically be treated as evidence of intentional adverse
+drafting.
+
+============================================================
+3. TRANSACTION-STRUCTURE SANITY CHECK
+============================================================
+
+Before assessing liabilities, remedies, transfer mechanics, consents,
+tax, TSA, escrow or closing mechanics, identify the transaction as:
+
+- statutory merger
+- stock/equity acquisition
+- asset acquisition
+- unknown/other
+
+Do NOT import asset-purchase concepts into a statutory merger without
+explaining why they apply.
+
+STATUTORY MERGER RULE:
+If the target's assets/liabilities vest in the surviving corporation by
+operation of merger law, do not characterize that statutory consequence
+alone as:
+- an unusual assumption of liabilities
+- unlimited liability caused solely by drafting
+- an asset-style liability assumption
+- a contradiction with another clause merely acknowledging such vesting
+
+Instead distinguish:
+
+(A) statutory succession of liabilities; from
+(B) contractual allocation of economic recourse between the parties.
+
+Example:
+"Target liabilities vest in the surviving corporation" may be normal
+merger mechanics.
+
+"No indemnification will be available" is a separate contractual
+allocation of recourse.
+
+Analyze them separately and then analyze their interaction.
+
+============================================================
+4. CONTRADICTION TEST
+============================================================
+
+Before labeling two clauses "contradictory", determine whether they are:
+
+TRUE_CONTRADICTION:
+Both propositions cannot simultaneously operate as written.
+
+REDUNDANT:
+They express substantially the same result.
+
+INTERACTING:
+Both can operate but produce a combined consequence.
+
+AMBIGUOUS:
+Their relationship is unclear.
+
+Do not call redundancy or interaction a contradiction.
+
+============================================================
+5. REMEDY / FRAUD DISCIPLINE
+============================================================
+
+Never equate:
+"No indemnification"
+with:
+"No legal remedy whatsoever."
+
+Indemnification, contractual damages, termination remedies,
+extra-contractual fraud, fraudulent inducement, equitable remedies,
+rescission and statutory remedies may be legally distinct.
+
+Unless the contract clearly establishes an exclusive-remedy regime and
+applicable law supports the conclusion, state only what is established.
+
+Preferred formulation:
+"Contractual indemnification is unavailable. Availability of
+extra-contractual fraud or other remedies requires separate analysis
+under applicable law."
+
+Do not say a fraud claim is impossible, barred, uncapped, recoverable,
+or unavailable without sufficient contractual and legal support.
+
+============================================================
+6. PARTY / OBLIGOR VALIDATION
+============================================================
+
+Before generating any proposed clause:
+
+- Identify every defined party.
+- Determine which entities survive Closing.
+- Determine whether a proposed obligor exists post-Closing.
+- Never invent "Seller", "Shareholders", "Parent", "Guarantor",
+  "Stockholder Representative", or another obligor unless such party
+  exists in the source or is explicitly introduced as a REQUIRED NEW
+  PARTY/STRUCTURE.
+
+For merger indemnification recommendations, if the Target disappears or
+merges into Buyer, do NOT simply draft:
+
+"Seller shall indemnify Buyer"
+
+unless Seller is an actual identified surviving obligor.
+
+Instead state:
+"Any post-closing indemnification framework must identify a viable
+post-closing obligor and recovery source, such as specified equityholders,
+an escrow/holdback, parent guaranty, RWI, or another transaction-
+appropriate mechanism."
+
+============================================================
+7. NUMERICAL CLAIM / FALSE PRECISION FILTER
+============================================================
+
+Every numerical assertion must pass this test:
+
+SOURCE =
+- contract;
+- user-supplied financial data;
+- current authoritative legal/regulatory source; or
+- documented empirical benchmark available to the system.
+
+If no source exists, DELETE the number.
+
+This applies to:
+- probability percentages
+- expected losses
+- valuation erosion
+- "typical" working-capital shortfalls
+- litigation costs
+- minimum rational claim size
+- negotiation percentages
+- market-standard baskets/caps
+- retention periods described as mandatory
+- economic exposure estimates
+
+Never generate unsupported statements such as:
+"30-50% value erosion",
+"$2m-$10m typical exposure",
+"100% probability",
+or "$1m minimum rational claim".
+
+Where useful, say:
+"Potentially material; cannot quantify from the supplied documents."
+
+============================================================
+8. REGULATORY / SECURITIES LAW GATE
+============================================================
+
+NEVER infer regulatory filing requirements merely from deal value.
+
+For HSR/antitrust analysis:
+- Apply current thresholds/rules only if authoritative current data is
+  available.
+- Verify transaction type, size, parties and exemptions.
+- Otherwise say:
+  "HSR applicability cannot be determined from the supplied document;
+   confirm current thresholds, size-of-person tests where applicable,
+   transaction value and exemptions."
+
+For federal securities laws:
+Do NOT say S-4, S-3, DEF 14A, proxy, registration statement or similar
+filings are required unless facts establish the relevant issuer/public
+company/security issuance/shareholder-vote circumstances.
+
+A cash merger alone does NOT establish a registration-statement
+requirement.
+
+For CFIUS, sector regulation, foreign investment, licensing, privacy,
+environmental or other regulatory frameworks:
+Use UNKNOWN / REQUIRES CONFIRMATION unless supporting facts exist.
+
+"Not mentioned" does NOT equal "low regulatory risk."
+
+============================================================
+9. TAX GATE
+============================================================
+
+Do not recommend or assume:
+- Section 338(h)(10)
+- Section 336(e)
+- Section 1060 allocation
+- tax-free reorganization treatment
+- specific purchase-price allocation treatment
+
+unless the transaction structure and necessary tax/entity facts support
+the recommendation.
+
+Otherwise:
+"Tax treatment/election availability requires confirmation based on
+entity classification, transaction structure and seller/shareholder
+facts."
+
+============================================================
+10. MISSING INFORMATION != LOW RISK
+============================================================
+
+This is mandatory.
+
+If there is insufficient evidence to assess:
+- litigation risk
+- shareholder claims
+- appraisal risk
+- antitrust risk
+- regulatory investigations
+- employment claims
+- IP disputes
+- environmental exposure
+- tax disputes
+- cybersecurity/privacy exposure
+
+classification must be:
+
+NOT_ASSESSABLE
+or
+INSUFFICIENT_INFORMATION
+
+Do NOT classify as LOW merely because the contract contains no direct
+indicator.
+
+============================================================
+11. COVENANT / EMPLOYEE DISCIPLINE
+============================================================
+
+Do not infer intent or future conduct from absence of a covenant.
+
+Incorrect:
+"Seller will recruit employees after Day 30."
+
+Correct:
+"No contractual non-solicitation restriction was identified, so the
+agreement itself does not prevent solicitation after Closing, subject
+to applicable law and any agreements not provided."
+
+Do not describe an employment-retention period as a "knowledge-transfer
+window" unless the contract says so.
+
+Do not automatically recommend blanket 12/18/24-month employee
+retention.
+
+Distinguish:
+- treatment of employees
+- key-person retention
+- retention bonuses
+- employee non-solicitation
+- seller restrictive covenants
+
+Any proposed non-compete must be labeled jurisdiction- and
+party-dependent and should not be represented as universally
+enforceable or standard.
+
+============================================================
+12. WORKING CAPITAL / ECONOMIC MECHANICS
+============================================================
+
+Absence of a working-capital adjustment is not inherently defective.
+Fixed-price/no-adjustment structures may be intentional.
+
+Report:
+"No working-capital adjustment was identified."
+
+Then assess impact conditionally:
+"If the commercial pricing assumption requires delivery of a normalized
+level of working capital, the parties should consider whether adjustment
+or conduct-of-business protections are appropriate."
+
+Do not assert deliberate working-capital manipulation without evidence.
+
+============================================================
+13. FIDUCIARY DUTY SAFETY RULE
+============================================================
+
+Never conclude from contract language alone:
+
+"Proceeding would constitute a breach of fiduciary duty."
+
+Instead:
+"The provision may warrant board/counsel review in light of the
+transaction's risk allocation."
+
+Fiduciary-duty conclusions require facts regarding entity type,
+jurisdiction, decision process, conflicts, board conduct and applicable
+law.
+
+============================================================
+14. COUNTER-DRAFTING QA
+============================================================
+
+Every proposed revision must pass:
+
+[ ] All parties are defined or explicitly introduced.
+[ ] Proposed obligor exists when obligation is performed.
+[ ] Date is not already expired as of analysis date.
+[ ] Clause fits transaction structure.
+[ ] Defined terms are either supplied or shown as placeholders.
+[ ] No invented deal economics are presented as agreed facts.
+[ ] No supposedly "standard" percentage/period is presented as mandatory.
+[ ] Remedy provisions do not conflict with another proposed provision.
+[ ] Regulatory/tax assumptions are not embedded without support.
+[ ] Restrictive covenants are qualified for applicable-law review.
+
+If a proposed numeric term lacks transaction-specific support, use [●]
+or provide it as an illustrative negotiation point, not a conclusion.
+
+============================================================
+15. LANGUAGE / CONFIDENCE CALIBRATION
+============================================================
+
+Avoid sensational labels in professional output:
+- suicide pill
+- toxic
+- trap
+- roach motel
+- weaponized
+- forced suicide
+- catastrophic
+
+unless the user specifically requests colorful terminology.
+
+Prefer:
+- materially buyer-adverse
+- structurally imbalanced
+- unusually restrictive
+- significant allocation of risk
+- substantial revision required
+- not advisable to sign in current form
+
+For abbreviated/skeleton documents prefer:
+"Do not sign in current form; substantial drafting is required before
+this can function as an executable acquisition agreement."
+
+Do not infer malicious drafting intent.
+
+============================================================
+16. SCORE INTEGRITY
+============================================================
+
+If a numeric risk score is produced:
+
+- It must follow a documented formula.
+- Omission severity must be calibrated to document completeness.
+- AFFIRMATIVELY_ADVERSE provisions may receive greater weight than
+  ordinary omissions.
+- UNKNOWN / NOT_ASSESSABLE items must not automatically reduce score.
+- Interaction weighting must identify the exact findings involved.
+- Do not claim mathematical precision unsupported by methodology.
+
+Output score explanation sufficient for a reviewer to understand why
+the score changed.
+
+============================================================
+17. FINAL CONSISTENCY AUDIT
+============================================================
+
+Before approving the report, answer internally:
+
+1. Did the report invent any party?
+2. Did it invent any contractual obligation?
+3. Did it infer motive or future conduct?
+4. Did it turn an omission into an affirmative prohibition?
+5. Did it treat statutory merger mechanics as asset-purchase mechanics?
+6. Did it confuse indemnification with all available remedies?
+7. Did it label UNKNOWN as LOW?
+8. Did it state unsupported numerical estimates?
+9. Did it make unsupported regulatory or securities filing conclusions?
+10. Did it make unsupported tax-election conclusions?
+11. Did it make a fiduciary-duty conclusion without required facts?
+12. Are proposed dates valid as of the analysis date?
+13. Do proposed clauses bind actual parties?
+14. Are all direct quotations traceable to the document?
+15. Does every CRITICAL finding identify actual textual evidence or a
+    clearly explained contractual interaction?
+
+If ANY answer reveals an error:
+REVISE the report before returning it.
+
+============================================================
+18. REQUIRED FINAL FINDING FORMAT
+============================================================
+
+For every HIGH or CRITICAL finding, internally maintain:
+
+{
+  "title": "...",
+  "classification": "EXPRESS | CONTRACTUAL_INFERENCE | MARKET_COMPARISON",
+  "document_evidence": [
+    {
+      "section": "...",
+      "quote": "exact quotation"
+    }
+  ],
+  "transaction_structure_relevance": "...",
+  "legal_effect": "...",
+  "what_is_not_known": "...",
+  "severity": "HIGH | CRITICAL",
+  "confidence": "HIGH | MEDIUM | LOW",
+  "recommended_action": "...",
+  "human_review_required": true
+}
+
+A finding may not be HIGH/CRITICAL merely because expected language is
+absent from a skeleton document. Explain why the omission itself or its
+interaction with express language creates material risk.
+
+============================================================
+FINAL INSTRUCTION
+============================================================
+
+Accuracy outranks comprehensiveness.
+
+It is better to say:
+"Cannot determine from the supplied agreement"
+
+than to generate a plausible but unsupported legal conclusion.
+
+It is better to identify 5 defensible material risks than 20 speculative
+ones.
+
+Preserve valid specialist findings, but downgrade, qualify, rewrite or
+delete any conclusion that exceeds the documentary evidence.
+`;
+
+export interface ContractEvidence {
+  id: string;
+  sourceType: "CONTRACT" | "SCHEDULE" | "USER_FACT" | "EXTERNAL_AUTHORITY";
+  page?: number;
+  section?: string;
+  exactQuote?: string;
+  proposition: string;
+  confidence: number; // 0.0 - 1.0
+  status: "EXPRESS" | "INFERRED" | "OMITTED" | "UNKNOWN" | "INAPPLICABLE";
+  entities: string[];
+}
+
+export interface RiskFinding {
+  id: string;
+  title: string;
+  evidenceIds: string[];
+  classification:
+    | "EXPRESS"
+    | "CONTRACTUAL_INFERENCE"
+    | "MARKET_COMPARISON"
+    | "EXTERNAL_FACT_REQUIRED";
+  severity: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
+  confidence: "LOW" | "MEDIUM" | "HIGH";
+  legalEffect: string;
+  unknowns: string[];
+  recommendation: string;
+  humanReviewRequired: boolean;
+}
+
+/**
+ * Enforce the chain: source text → evidence object → legal inference →
+ * confidence/severity → final wording. A HIGH/CRITICAL finding may only be
+ * published if it points at contractual evidence (EXPRESS or OMITTED) and does
+ * not rely on external facts it has no external support for.
+ */
+export function mayPublishAsMaterialFinding(
+  finding: RiskFinding,
+  evidenceLedger: ContractEvidence[]
+): boolean {
+  if (finding.severity !== "HIGH" && finding.severity !== "CRITICAL") {
+    return true;
+  }
+  if (finding.evidenceIds.length === 0) {
+    return false;
+  }
+  const evidence = finding.evidenceIds
+    .map((id) => evidenceLedger.find((e) => e.id === id))
+    .filter((e): e is ContractEvidence => Boolean(e));
+
+  const hasContractualSupport = evidence.some(
+    (e) =>
+      e.sourceType === "CONTRACT" &&
+      (e.status === "EXPRESS" || e.status === "OMITTED")
+  );
+  if (!hasContractualSupport) {
+    return false;
+  }
+  // External-fact questions should not become contract red flags without the
+  // necessary external evidence.
+  if (
+    finding.classification === "EXTERNAL_FACT_REQUIRED" &&
+    !evidence.some((e) => e.sourceType === "EXTERNAL_AUTHORITY")
+  ) {
+    return false;
+  }
+  return true;
+}
+
+const DATE_RE =
+  /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}\b/g;
+const NUMERIC_CLAIM_RE =
+  /\$[\d,.]+(?:M|m|K|k)?|\b\d+(?:\.\d+)?\s*%/g;
+const DANGEROUS_CLAIM_RES = [
+  /constitute[s]? a breach of fiduciary duty/i,
+  /HSR.*(?:required|likely required)/i,
+  /S-4.*required/i,
+  /S-3.*required/i,
+  /DEF 14A.*required/i,
+  /no legal remedy/i,
+  /fraud.*(?:impossible|barred)/i,
+  /100%\s+(?:probability|certain|certainty)/i,
+];
+
+/**
+ * Deterministic post-processing checks for the final report. Returns a list of
+ * QA issues; an empty array means the report passed. Checks are conservative —
+ * they flag for review, they do not delete.
+ */
+export function validateFinalReport(
+  report: string,
+  contractText: string,
+  analysisDate: Date,
+  definedParties: string[]
+): string[] {
+  const errors: string[] = [];
+
+  // 1. Expired proposed dates
+  for (const match of report.matchAll(DATE_RE)) {
+    const proposed = new Date(match[0]);
+    if (
+      !isNaN(proposed.getTime()) &&
+      proposed < analysisDate &&
+      /outside date|closing date/i.test(
+        report.slice(Math.max(0, match.index! - 100), match.index! + 100)
+      )
+    ) {
+      errors.push(`Potential expired proposed transaction date: ${match[0]}`);
+    }
+  }
+
+  // 2. Detect unsupported precision patterns (allow figures in source contract)
+  const numericClaims = report.match(NUMERIC_CLAIM_RE) ?? [];
+  for (const claim of numericClaims) {
+    if (!contractText.includes(claim)) {
+      errors.push(
+        `Numeric assertion requires source/benchmark verification: ${claim}`
+      );
+    }
+  }
+
+  // 3. Flag dangerous categorical legal language for human/model review
+  for (const pattern of DANGEROUS_CLAIM_RES) {
+    if (pattern.test(report)) {
+      errors.push(
+        `High-risk categorical legal assertion requires validation: ${pattern}`
+      );
+    }
+  }
+
+  // 4. Catch common invented-obligor problem (conservative: flags, not deletes)
+  const proposedSellerObligation = /\bSeller shall\b|\bSeller must\b/gi.test(report);
+  const sellerDefined =
+    definedParties.some((p) => p.toLowerCase() === "seller") ||
+    /[("“]Seller[)"”]/i.test(contractText);
+  if (proposedSellerObligation && !sellerDefined) {
+    errors.push(
+      `Proposed drafting creates obligations for "Seller", but Seller is not a validated defined party.`
+    );
+  }
+
+  return errors;
+}
+
+function stripCodeFences(text: string): string {
+  return text.replace(/^```(?:markdown|md)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+}
+
+/**
+ * One LLM revision pass driven by the reliability gate. Triggered when
+ * validateFinalReport() (or the material-finding gate) surfaces issues.
+ */
+export async function runSanityRevision(
+  client: OpenAI,
+  reportMarkdown: string,
+  contractText: string,
+  qaErrors: string[]
+): Promise<string> {
+  const systemPrompt = MA_FINAL_SANITY_GATE;
+  const userPrompt = `The draft report failed deterministic QA.
+
+QA FAILURES:
+${qaErrors.map((e, i) => `${i + 1}. ${e}`).join("\n")}
+
+ORIGINAL CONTRACT:
+${contractText.substring(0, 600000)}
+
+DRAFT REPORT:
+${reportMarkdown}
+
+Correct every genuine failure.
+
+IMPORTANT:
+- Preserve valid findings.
+- Do not invent replacement facts.
+- Replace unsupported conclusions with UNKNOWN / NOT ASSESSABLE where appropriate.
+- Preserve exact contractual quotations.
+- Return the corrected report only.`;
+
+  const _start = Date.now();
+  console.log(`[LLM] Sanity revision (${MODELS.adjudicator}) — request started (${qaErrors.length} QA issue(s))`);
+  const response = await client.chat.completions.create({
+    model: MODELS.adjudicator,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    temperature: 0.1,
+  });
+  console.log(`[LLM TIMING] Sanity revision (${MODELS.adjudicator}): ${Date.now() - _start}ms`);
+
+  const content = response.choices[0]?.message?.content;
+  if (!content) throw new Error(`Sanity revision model returned empty response`);
+  return stripCodeFences(content);
+}
+

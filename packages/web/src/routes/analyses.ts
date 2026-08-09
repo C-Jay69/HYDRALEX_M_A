@@ -9,6 +9,9 @@ import {
   runCritic,
   runAdjudicator,
   validateCriticOutput,
+  validateFinalReport,
+  mayPublishAsMaterialFinding,
+  runSanityRevision,
   parseReportMetadata,
   reconcilePipelineOutput,
   formatReconcilerResult,
@@ -20,6 +23,8 @@ import {
   type ReconcilerFinding,
   type ResolvedSuppression,
   type DealTypeState,
+  type ContractEvidence,
+  type RiskFinding,
   stripScaffolding,
 } from "../lib/openrouter.js";
 import {
@@ -358,6 +363,15 @@ async function withRetry<T>(fn: () => Promise<T>, label: string, maxAttempts = 6
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Extract likely defined parties (quoted capitalized terms) from contract text. */
+function extractDefinedParties(contractText: string): string[] {
+  const set = new Set<string>();
+  const re = /[("“]([A-Z][A-Za-z0-9\s&'/.-]{2,60})[)"”]/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(contractText)) !== null) set.add(m[1].trim());
+  return [...set];
+}
+
 /** Extract text from an uploaded File. Throws with a clear message on failure. */
 async function extractFileText(file: File): Promise<string> {
   const name = file.name.toLowerCase();
@@ -556,6 +570,77 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
     reportMarkdown += "\n\n" + moduleSections.join("\n");
   } catch (err) {
     console.error("[MODULES] analysis-module error (non-fatal):", err);
+  }
+
+  // ── Final reliability / legal sanity gate ───────────────────────────────────
+  try {
+    const definedParties = extractDefinedParties(contractText);
+    const qaErrors = validateFinalReport(reportMarkdown, contractText, new Date(), definedParties);
+
+    // Evidence-ledger material-finding gate: a HIGH/CRITICAL finding may not be
+    // published unless it points at direct contractual evidence.
+    const gateFailures: string[] = [];
+    try {
+      const analystJson = JSON.parse(llm1Raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
+      const findings = analystJson.findings ?? [];
+      const ledger: ContractEvidence[] = findings.map((f: any, i: number) => ({
+        id: f.finding_id ?? `A1-${String(i + 1).padStart(3, "0")}`,
+        sourceType: "CONTRACT",
+        section: f.category ?? undefined,
+        exactQuote: f.quoted_text ?? undefined,
+        proposition: f.summary ?? f.category ?? "",
+        confidence: f.confidence === "HIGH" ? 1 : f.confidence === "MEDIUM" ? 0.6 : 0.3,
+        status: f.disposition === "OMITTED" ? "OMITTED" : "EXPRESS",
+        entities: [],
+      }));
+      const riskFindings: RiskFinding[] = findings.map((f: any, i: number) => ({
+        id: f.finding_id ?? `A1-${String(i + 1).padStart(3, "0")}`,
+        title: f.summary ?? f.category ?? "Finding",
+        evidenceIds: [ledger[i]?.id ?? ""].filter(Boolean),
+        classification: f.quoted_text ? "EXPRESS" : "CONTRACTUAL_INFERENCE",
+        severity: (f.severity === "critical" ? "CRITICAL" : f.severity === "high" ? "HIGH" : f.severity === "moderate" ? "MODERATE" : "LOW") as RiskFinding["severity"],
+        confidence: (f.confidence ?? "MEDIUM") as RiskFinding["confidence"],
+        legalEffect: "",
+        unknowns: [],
+        recommendation: "",
+        humanReviewRequired: f.severity === "critical",
+      }));
+      for (const rf of riskFindings) {
+        if ((rf.severity === "HIGH" || rf.severity === "CRITICAL") && !mayPublishAsMaterialFinding(rf, ledger)) {
+          gateFailures.push(
+            `Material finding ${rf.id} ('${rf.title.slice(0, 80)}') lacks direct contractual evidence (quoted_text) and failed the publish gate.`
+          );
+        }
+      }
+    } catch (err) {
+      console.warn("[SANITY GATE] Could not build evidence ledger:", err);
+    }
+
+    const allErrors = [...qaErrors, ...gateFailures];
+    if (allErrors.length > 0) {
+      console.warn(`[SANITY GATE] ${allErrors.length} QA issue(s) on analysis ${id}:`);
+      for (const e of allErrors.slice(0, 20)) console.warn(`  - ${e}`);
+      if (allErrors.length > 20) console.warn(`  ... and ${allErrors.length - 20} more`);
+
+      // One bounded revision pass instead of just logging the failures.
+      try {
+        const revised = await runSanityRevision(client, reportMarkdown, contractText, allErrors.slice(0, 60));
+        if (revised.trim().length > 100) {
+          reportMarkdown = revised;
+          console.log(`[SANITY GATE] Analysis #${id} revised after QA (${allErrors.length} issue(s) addressed).`);
+        }
+      } catch (err) {
+        console.warn("[SANITY GATE] Revision pass failed — keeping original report:", err);
+      }
+    }
+    await writeAudit({
+      action: "sanity_gate",
+      resourceType: "analysis",
+      resourceId: id,
+      metadata: { qaIssues: qaErrors.length, gateFailures: gateFailures.length, revised: allErrors.length > 0 },
+    }).catch(() => {});
+  } catch (err) {
+    console.warn("[SANITY GATE] Could not run final reliability gate:", err);
   }
 
   await db.update(schema.analyses).set({
