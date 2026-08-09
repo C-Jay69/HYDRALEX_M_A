@@ -306,9 +306,9 @@ function isRateLimitError(err: any): boolean {
 
 function isTransientError(err: any): boolean {
   if (isRateLimitError(err)) return true;
-  if (err?.status >= 500) return true;
-  const name = err?.name?.toLowerCase() ?? "";
-  if (name.includes("apiconnectionerror") || name.includes("apitimeouterror")) return true;
+  if (err?.status >= 500 && err?.status < 600) return true;
+  // NOTE: do NOT retry on APITimeoutError/APIConnectionError — a slow free-tier
+  // request would otherwise loop for 5min × attempts before failing.
   return false;
 }
 
@@ -379,10 +379,12 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
   const contractText = documents[0]?.text ?? "";
   const client = getOpenRouterClient();
   const _pipelineStart = Date.now();
+  console.log(`[PIPELINE] Analysis #${id} started — ${contractText.length.toLocaleString()} chars, ${perspective} perspective`);
 
   // Step 1: Analyst
   await db.update(schema.analyses).set({ step: "analyst" }).where(eq(schema.analyses.id, id));
   const llm1Start = Date.now();
+  console.log(`[PIPELINE] Analysis #${id} → step=analyst`);
   const llm1Raw = await withRetry(() => runAnalyst(client, contractText, perspective), "Analyst");
   await writeAudit({ action: "analyst", resourceType: "analysis", resourceId: id, metadata: { model: "analyst", status: "complete", ms: Date.now() - llm1Start, perspective } });
   await db.update(schema.analyses).set({ llm1Output: llm1Raw, step: "critic" }).where(eq(schema.analyses.id, id));
@@ -390,6 +392,7 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
 
   // Step 2: Critic
   const llm2Start = Date.now();
+  console.log(`[PIPELINE] Analysis #${id} → step=critic`);
   const llm2Raw = await withRetry(() => runCritic(client, contractText, llm1Raw, perspective), "Critic");
   await writeAudit({ action: "critic", resourceType: "analysis", resourceId: id, metadata: { model: "critic", status: "complete", ms: Date.now() - llm2Start } });
   await db.update(schema.analyses).set({ llm2Output: llm2Raw, step: "adjudicator" }).where(eq(schema.analyses.id, id));
@@ -397,6 +400,7 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
 
   // Step 3: Adjudicator
   const adjStart = Date.now();
+  console.log(`[PIPELINE] Analysis #${id} → step=adjudicator`);
   let reportMarkdown = await withRetry(() => runAdjudicator(client, llm1Raw, llm2Raw, contractText, perspective), "Adjudicator");
   await writeAudit({ action: "adjudicator", resourceType: "analysis", resourceId: id, metadata: { model: "adjudicator", status: "complete", ms: Date.now() - adjStart } });
   console.log(`[LLM TIMING] Total pipeline (LLM net + 25s sleeps): ${Date.now() - _pipelineStart}ms`);

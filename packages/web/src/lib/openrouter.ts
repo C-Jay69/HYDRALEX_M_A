@@ -288,6 +288,7 @@ ${contractText.substring(0, 600000)}
 Detect the industry vertical first. Then systematically apply the full checklist. Hunt liability flow reversals. Output structured JSON only.`;
 
   const _analystStart = Date.now();
+  console.log(`[LLM] Analyst (${MODELS.analyst}) — request started (${contractText.length.toLocaleString()} chars contract)`);
   const response = await client.chat.completions.create({
     model: MODELS.analyst,
     messages: [
@@ -406,6 +407,7 @@ ${analystOutput.substring(0, 4000)}
 Hunt missing economic infrastructure. Audit the first review. Output structured JSON only.`;
 
   const _criticStart = Date.now();
+  console.log(`[LLM] Critic (${MODELS.critic}) — request started (${contractText.length.toLocaleString()} chars contract)`);
   const response = await client.chat.completions.create({
     model: MODELS.critic,
     messages: [
@@ -1111,6 +1113,7 @@ ${contractSection}
 Apply all aggregation rules (L3-A through L3-D). Elevate any CRITICAL from either specialist. Apply L3-B cross-layer reconciliation using the classification metadata above. Generate the final report in the exact Markdown format specified.`;
 
   const _adjudicatorStart = Date.now();
+  console.log(`[LLM] Adjudicator (${MODELS.adjudicator}) — request started (${contractText.length.toLocaleString()} chars contract)`);
   const response = await client.chat.completions.create({
     model: MODELS.adjudicator,
     messages: [
