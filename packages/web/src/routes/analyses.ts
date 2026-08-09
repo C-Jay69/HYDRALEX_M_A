@@ -282,6 +282,36 @@ export const analyses = new Hono()
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+// OpenRouter returns rate-limit info via headers on 429s:
+//   Retry-After / Retry-After-Ms  → seconds/milliseconds until the limit resets
+//   X-RateLimit-Reset             → unix timestamp (seconds) of the reset
+function rateLimitHeader(err: any, name: string): string | undefined {
+  const h = err?.headers;
+  if (!h) return undefined;
+  if (typeof h.get === "function") {
+    return h.get(name) ?? undefined;
+  }
+  return h[name] ?? h[name.toLowerCase()] ?? h[name.toUpperCase()];
+}
+
+function isRateLimitError(err: any): boolean {
+  return (
+    err?.status === 429 ||
+    err?.message?.includes("429") ||
+    err?.message?.toLowerCase().includes("rate limit") ||
+    err?.message?.toLowerCase().includes("provider returned error") ||
+    err?.message?.toLowerCase().includes("too many requests")
+  );
+}
+
+function isTransientError(err: any): boolean {
+  if (isRateLimitError(err)) return true;
+  if (err?.status >= 500) return true;
+  const name = err?.name?.toLowerCase() ?? "";
+  if (name.includes("apiconnectionerror") || name.includes("apitimeouterror")) return true;
+  return false;
+}
+
 async function withRetry<T>(fn: () => Promise<T>, label: string, maxAttempts = 6): Promise<T> {
   let lastError: any;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -289,17 +319,36 @@ async function withRetry<T>(fn: () => Promise<T>, label: string, maxAttempts = 6
       return await fn();
     } catch (err: any) {
       lastError = err;
-      const is429 =
-        err?.status === 429 ||
-        err?.message?.includes("429") ||
-        err?.message?.toLowerCase().includes("rate limit") ||
-        err?.message?.toLowerCase().includes("provider returned error") ||
-        err?.message?.toLowerCase().includes("too many requests");
+      if (!isTransientError(err) || attempt === maxAttempts) throw err;
 
-      if (!is429 || attempt === maxAttempts) throw err;
-      // Exponential backoff starting at 30 seconds
-      const waitMs = 30000 * Math.pow(2, attempt - 1);
-      console.warn(`[${label}] 429 rate limit — attempt ${attempt}/${maxAttempts}, retrying in ${waitMs / 1000}s...`);
+      // Honor the server's retry timing when available.
+      const retryAfterMsRaw = rateLimitHeader(err, "retry-after-ms") ?? rateLimitHeader(err, "retry-after");
+      const retryAfterMs = retryAfterMsRaw
+        ? (rateLimitHeader(err, "retry-after-ms") ? parseFloat(retryAfterMsRaw) : parseFloat(retryAfterMsRaw) * 1000)
+        : 0;
+      const resetSec = rateLimitHeader(err, "x-ratelimit-reset");
+      const resetMs = resetSec ? parseFloat(resetSec) * 1000 - Date.now() : 0;
+      const requestedWaitMs = Math.max(retryAfterMs, resetMs, 0);
+
+      // If the quota resets more than 10 minutes out (e.g. the 50/day free
+      // limit, which resets at UTC midnight), retrying will never succeed —
+      // fail fast with a clear message instead of hanging and burning quota.
+      const MAX_WAIT_MS = 10 * 60 * 1000;
+      if (requestedWaitMs > MAX_WAIT_MS) {
+        const mins = Math.max(1, Math.round(requestedWaitMs / 60000));
+        throw new Error(
+          `${label} — OpenRouter free-model rate limit will not reset for ~${mins} minute(s). ` +
+          `Free models are capped at 50 requests/day (or 1000/day after adding $10+ of credits at ` +
+          `https://openrouter.ai/settings/credits), and failed attempts count against that quota. ` +
+          `Wait for the daily reset or add credits, then retry.`
+        );
+      }
+
+      // Exponential backoff with jitter, floor 30s, but never wait less than
+      // the server's requested delay.
+      const backoffMs = 30000 * Math.pow(2, attempt - 1);
+      const waitMs = Math.max(backoffMs, requestedWaitMs) + Math.random() * 5000;
+      console.warn(`[${label}] 429 rate limit — attempt ${attempt}/${maxAttempts}, retrying in ${Math.round(waitMs / 1000)}s...`);
       await new Promise((r) => setTimeout(r, waitMs));
     }
   }

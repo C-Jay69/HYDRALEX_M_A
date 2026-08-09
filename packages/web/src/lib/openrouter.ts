@@ -45,12 +45,14 @@ Still flag all CRITICAL structural defects regardless of party — but frame ris
 }
 
 // Model configuration — OpenRouter FREE models only (all end in :free)
-// Analyst:     google/gemma-4-31b-it:free     — 256K ctx, Indemnity Hunter
-// Critic:      poolside/laguna-xs-2.1:free     — 256K ctx, Economic Engine Hunter
+// NOTE: Google AI Studio free endpoints (gemma-*) cap input at 16K tokens, so
+// Google-hosted free models are unusable for full contract analysis.
+// Analyst:     nvidia/nemotron-3-super-120b-a12b:free — 256K ctx, Indemnity Hunter
+// Critic:      poolside/laguna-xs-2.1:free            — 256K ctx, Economic Engine Hunter
 // Adjudicator: nvidia/nemotron-3-ultra-550b-a55b:free — 1M ctx, Contradiction Hunter + final synthesis
 export const VERSION = "1.1.0-openrouter-free";
 export const MODELS = {
-  analyst: "google/gemma-4-31b-it:free",
+  analyst: "nvidia/nemotron-3-super-120b-a12b:free",
   critic: "poolside/laguna-xs-2.1:free",
   adjudicator: "nvidia/nemotron-3-ultra-550b-a55b:free",
 };
@@ -62,7 +64,9 @@ export function getOpenRouterClient() {
   return new OpenAI({
     baseURL: "https://openrouter.ai/api/v1",
     apiKey,
-    maxRetries: 3,
+    // Retries handled by withRetry() in routes/analyses.ts — SDK-level retries
+    // would burn the free-model daily quota (each failed attempt counts against it).
+    maxRetries: 0,
     timeout: 300000, // Increased to 5 minutes
     defaultHeaders: {
       "HTTP-Referer": "https://ma-review.runable.app",
