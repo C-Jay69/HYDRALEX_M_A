@@ -8,6 +8,7 @@ import {
   runAnalyst,
   runCritic,
   runAdjudicator,
+  validateCriticOutput,
   parseReportMetadata,
   reconcilePipelineOutput,
   formatReconcilerResult,
@@ -394,6 +395,24 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
   const llm2Start = Date.now();
   console.log(`[PIPELINE] Analysis #${id} → step=critic`);
   const llm2Raw = await withRetry(() => runCritic(client, contractText, llm1Raw, perspective), "Critic");
+  // Programmatic guardrail on the Critic's reconciliation output (prompting alone
+  // won't reliably stop it claiming a miss when Agent 1 already found the issue).
+  try {
+    const criticJson = JSON.parse(llm2Raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
+    const criticErrors = validateCriticOutput(criticJson);
+    if (criticErrors.length > 0) {
+      console.warn(`[CRITIC GUARDRAIL] ${criticErrors.length} contradiction(s) in Critic output for analysis ${id}:`);
+      for (const e of criticErrors) console.warn(`  - ${e}`);
+    }
+    writeAudit({
+      action: "critic_guardrail",
+      resourceType: "analysis",
+      resourceId: id,
+      metadata: { contradictions: criticErrors.length, errors: criticErrors },
+    }).catch(() => {});
+  } catch {
+    console.warn(`[CRITIC GUARDRAIL] Could not parse Critic JSON for analysis ${id}`);
+  }
   await writeAudit({ action: "critic", resourceType: "analysis", resourceId: id, metadata: { model: "critic", status: "complete", ms: Date.now() - llm2Start } });
   await db.update(schema.analyses).set({ llm2Output: llm2Raw, step: "adjudicator" }).where(eq(schema.analyses.id, id));
   await sleep(30000); // Increased from 15s to 30s to avoid rate limits

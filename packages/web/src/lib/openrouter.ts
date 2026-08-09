@@ -92,7 +92,7 @@ export function loadPrompt(stage: string): string {
 export const MA_CRITERIA = loadPrompt("master_prompt.md");
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LLM #1 — INDEMNITY HUNTER (Gemini 2.5 Flash)
+// LLM #1 — INDEMNITY HUNTER (nvidia/nemotron-3-super-120b-a12b:free)
 // ─────────────────────────────────────────────────────────────────────────────
 export async function runAnalyst(
   client: OpenAI,
@@ -260,6 +260,7 @@ Output ONLY valid JSON:
   ],
   "findings": [
     {
+      "finding_id": "string (MANDATORY — stable unique id per finding, e.g. 'A1-001', 'A1-002', ...). The Critic and Adjudicator will reference findings by this id, so it must be unique and stable.",
       "category": "string (e.g. '6. Indemnification' or 'RF-03: Security for Indemnity')",
       "status": "present_favorable | present_neutral | present_unfavorable | absent | weak | detected | not_detected | incomplete | suppressed",
       "severity": "critical | high | moderate | low",
@@ -305,106 +306,244 @@ Detect the industry vertical first. Then systematically apply the full checklist
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LLM #2 — ECONOMIC ENGINE HUNTER (Gemini 2.5 Flash Lite)
+// LLM #2 — CRITIC / RECONCILIATION AGENT (poolside/laguna-xs-2.1:free)
+// Reviews Agent 1's analysis — never restarts the review from scratch.
 // ─────────────────────────────────────────────────────────────────────────────
+
+export type CriticIssueType =
+  | "true_missed_item"
+  | "severity_disagreement"
+  | "assessment_refinement"
+  | "factual_or_logic_error"
+  | "classification_error"
+  | "unsupported_inference";
+
+export interface CriticReconciliationItem {
+  issue: string;
+  agent1_detected: boolean;
+  agent1_match?: string | null;
+  matched_finding_ids?: string[];
+  issue_type: CriticIssueType;
+  agent1_severity?: string | null;
+  critic_severity?: string | null;
+  new_information: string;
+  evidence: string;
+  requires_verification: boolean;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+}
+
+export interface CriticOutput {
+  reconciliation: CriticReconciliationItem[];
+  true_missed_risks: string[];
+  agent1_internal_errors: string[];
+  overall_critique: string;
+}
+
+/**
+ * Programmatic guardrail: prompting alone won't reliably stop the Critic from
+ * claiming something was missed when Agent 1 actually found it. Returns a list
+ * of contradiction strings; an empty array means the output is coherent.
+ */
+export function validateCriticOutput(raw: unknown): string[] {
+  const errors: string[] = [];
+  const critic = (raw ?? {}) as CriticOutput;
+  for (const item of critic.reconciliation ?? []) {
+    const detected = item.agent1_detected;
+    const issueType = item.issue_type;
+    const label = item.issue ?? "(unnamed issue)";
+
+    if (detected === true && issueType === "true_missed_item") {
+      errors.push(`Contradiction: '${label}' is marked as both detected by Agent 1 and a true missed item.`);
+    }
+    if (detected === false && item.agent1_match) {
+      errors.push(`Contradiction: '${label}' says Agent 1 did not detect it but supplies an Agent 1 match.`);
+    }
+    if (issueType === "severity_disagreement" && !detected) {
+      errors.push(`Severity disagreement requires an existing Agent 1 finding: '${label}'.`);
+    }
+    if (issueType === "true_missed_item" && item.agent1_match) {
+      errors.push(`A true missed item cannot have an Agent 1 match: '${label}'.`);
+    }
+  }
+  return errors;
+}
+
 export async function runCritic(
   client: OpenAI,
   contractText: string,
   analystOutput: string,
   perspective: ReviewPerspective = "BUYER"
 ): Promise<string> {
-  const systemPrompt = `You are a senior M&A partner at a Vault 10 law firm. You are THE ECONOMIC ENGINE HUNTER.
+  const systemPrompt = `You are LLM2, the Critic/Reconciliation Agent in a legal agreement review pipeline.
 ${perspectiveBlock(perspective)}
 
-YOUR MANDATE: Two junior associates already reviewed this contract and missed material structural risks. Your explicit mission is to find what they missed — especially missing economic infrastructure.
+Your job is to REVIEW Agent 1's analysis, not to restart the review from scratch.
 
-ANALYTICAL PHILOSOPHY — internalize before reading:
-Your objective is NOT to maximize issue count. It is to maximize accuracy.
-Distinguish: (A) hostile drafting, (B) incomplete/skeleton drafting, (C) abbreviated sample, (D) market-standard, (E) non-market but negotiable, (F) catastrophic defect.
-IMPORTANT CALIBRATION: In a skeleton or abbreviated agreement, missing escrow, missing cap, missing basket are INCOMPLETENESS issues — not necessarily seller-hostile choices. Score accordingly.
-Apply DRAFT COMPLETENESS CLASSIFICATION (Tier 1–4) from the master checklist FIRST. Tier 1 skeletons must never receive catastrophic scores solely for missing detailed provisions.
-Apply all INFERENCE DISCIPLINE RULES. Never infer asymmetry from silence.
+CRITICAL RULE:
+Before calling anything "missed", "omitted", or "new", you MUST determine whether
+Agent 1 already identified the same underlying issue anywhere in:
+- findings[].finding_id
+- findings[].category
+- findings[].summary
+- findings[].specific_issues
+- findings[].quoted_text
+- overall_impression
+- specialist_focus_summary
 
-YOUR SPECIALIZED FOCUS — hunt these with paranoid precision:
-• PURCHASE PRICE MECHANICS: Is the price formula complete? Adjustments clearly defined? Any ambiguity that could be exploited post-signing?
-• EARNOUT FORMULA: Are the EXACT thresholds, %, tiers, payout schedule IN THE TEXT? "Described procedurally but no numbers" → INCOMPLETE. Never call it "well-defined." Does "good faith operation" covenant secretly prevent Buyer from integrating? (PAIR-04)
-• WORKING CAPITAL: Target, peg, defined methodology? If absent in going-concern purchase → MAJOR. (RF-04)
-• ESCROW/HOLDBACK: Amount and duration? Adequate relative to deal size? If none → CRITICAL: "Unsecured indemnity." (RF-03, PAIR-03)
-• BREAK FEES: Symmetric? Reverse break fee adequate if Buyer walks? Is fee the "sole and exclusive remedy"? (PAIR-05)
-• PENSION/DEFINED BENEFIT: Underfunding transfers directly to Buyer. (MFG-LAB-02 if manufacturing)
-• DEFERRED REVENUE: Treatment in working capital calculation? (TECH-FIN-01 if tech)
-• CUSTOMER CONCENTRATION: >30% from single customer → CRITICAL (TECH-FIN-02)
-• VERTICAL-SPECIFIC FINANCIAL GAPS: Apply the detected industry vertical checklist
-• AS-IS + INDEMNITY NULLIFICATION = LIVE RISK (Rule 1): If a deal combines an "As-Is" or "Where-Is" clause with an explicit indemnity exclusion AND diligence waiver, classify that combination as a LIVE RISK / CRITICAL DEFECT — not a false positive. Rationale: representations become structurally unactionable post-closing when indemnity is explicitly excluded and diligence is waived. Flag the compounding interaction; do NOT suppress as boilerplate.
-• SURVIVAL CLAUSE GATE (Rule 2): Before classifying non-disparagement or confidentiality obligations as "Illusory" due to termination-for-convenience, check for a Survival clause. If the agreement is a Tier 1 skeleton lacking a survival clause, note: "Pending addition of standard Survival clause, termination for convenience could technically extinguish non-disparagement framework." Do NOT assume termination erases post-closing obligations if standard post-closing survival is implied or customarily expected. Never flag non-disparagement as illusory unless survival clause is affirmatively absent AND termination language is explicit and unconditional.
-• SHELL COMPANY CHECK (SYNTH-02): Is there a TSA? Are employees retained? Are customer contracts confirmed assignable? Apply DEAL-TYPE GATE — in 100% equity acquisitions of standalone entities, TSA absence is NOT automatically critical (entity survives intact). Analyze in deal-type context.
-• ROACH MOTEL CHECK (SYNTH-04): Are termination rights mutual? Is one party locked in without an escape valve? → HIGH RISK for locked-in party.
-• DEAL-TYPE ONTOLOGY: Classify the deal type per STEP 1A before any analysis. Do NOT import asset-purchase logic into equity deals. TSA, source code escrow, and assumption-of-liabilities framing have different meanings in equity vs. asset transactions.
-• INTERACTION-WEIGHTED SCORING: Flag when multiple risk factors stack multiplicatively. Examples: (weak reps + escrow-only remedy + short survival = recovery probability near zero), (earnout + unconstrained operational discretion = litigation-certain), (healthcare + uncapped privacy indemnity + narrow HIPAA reps = catastrophic regulatory tail), (escrow-only + no RWI + low cap + knowledge qualifiers = effective indemnity nullification). When you see 3+ negative factors intersecting, flag as COMPOUNDED RISK STACK with combined impact assessment.
-• ARBITRATION ECONOMICS: Multi-arbitrator JAMS/AAA M&A panels cost $500K–$2M+ and take 2-3 years. A $200K–$500K indemnity claim becomes economically irrational to pursue. If arbitration structure eliminates practical enforceability of small/mid-size indemnity claims → flag as material economic defect.
-• SPOLIATION / DATA HOLE PRIORITY OVERRIDE (anti-overshadowing rule): Models frequently suppress specific operational defects (missing data, destroyed servers, unrecoverable financials) when a dominant macro-defect (e.g., total absence of indemnification) appears to render them moot. This is a LOGICAL ERROR. Any acknowledgment of unrecoverable, destroyed, or migrated historical financial or operational data is an ABSOLUTE VALUE DEFECT — independent of the indemnity structure. NEVER classify a data destruction finding as a "Non-Risk" or "Overstated Risk" on the grounds that other clauses overshadow it. Rationale: a Buyer who wins a standard indemnity framework in renegotiation but fails to address a wiped financial data window ends up with a fully functional indemnity that is blind to a hidden historical tax or accounting black hole. The data defect and the indemnity defect are independent remediation tracks — both must appear in your output. Flag it and pass it forward to the Adjudicator with PRIORITY_OVERRIDE: SPOLIATION tag.
+SEMANTIC MATCHING RULE:
+Two findings are the SAME underlying issue even if:
+- they use different category names;
+- they use different wording;
+- they assign different severity;
+- one is more detailed;
+- one discusses a consequence of the issue.
 
-ALSO AUDIT the first reviewer's work: find every mistake, missed clause, underestimated risk, or hallucination. Be adversarial. If they said "Not detected" for any Part B check, verify it against the actual contract.
+Example:
+Agent 1: "No escrow or holdback secures indemnification obligations."
+You: "Unsecured indemnity creates collection risk."
+=> SAME ISSUE. This is NOT a missed item.
 
-APPLY CALIBRATION RULES (mandatory before finalizing findings):
-• Section II taxonomy: classify every finding as Missing/Undefined/Weak/Waiver/Trap/Market Standard
-• Section III-1: Full purchase price cap is NOT weak — never flag 100% cap as inadequate
-• Section III-2: 18–24mo general rep survival = market standard — do NOT flag as short
-• Section III-3: Absence of basket may FAVOR buyer — do NOT call seller-favorable
-• Section V-2: Suppress SaaS false positives (source code escrow, TSA, assumption of liabilities in equity deals)
-• Section VI-1: Employee retention absence ≠ Day-1 failure unless earnout/key-person dependency evidenced
-• Section VII-1/2: Termination rights absence ≠ asymmetrical forced-close without affirmative evidence
-• Section IX false positives: suppress FP-01 through FP-12 unless affirmative textual evidence
-• ESCROW RECIPROCITY RULE (Buyer perspective): If the contract states escrow/holdback is the "first source" of recovery but does NOT explicitly state it is the "sole" or "exclusive" source, this is a BUYER-FAVORABLE ambiguity — do NOT generate counter-language that caps recovery to escrow-only. Any proposed revision must explicitly preserve Buyer's right to pursue Seller's general assets beyond the escrow up to the applicable liability caps.
-• SUPPRESSION CROSS-CHECK: Any risk item classified as INAPPLICABLE or suppressed under FP-01 through FP-12 (e.g., FP-09 environmental rep in pure software co.) must NOT reappear as a Critical Finding or be given a surgical edit slot. Suppression is final — do not re-introduce suppressed items as live risks elsewhere in the output.
+Agent 1: "MAE definition absent; severity low."
+You: "Missing MAE is critical."
+=> SAME ISSUE. This is a SEVERITY DISAGREEMENT, not a missed item.
 
-BEFORE OUTPUTTING — answer these 5 questions internally:
-1. Did I verify the earnout formula is actually in the text with numbers?
-2. Did I confirm escrow/holdback exists and is sized adequately?
-3. Did I check working capital adjustment mechanism exists?
-4. Did I find at least one economic risk a surface-level reading would miss?
-5. Did I flag every missing schedule or external reference?
-If you cannot answer "yes" to all five, re-read the contract.
+IDENTIFIER CONTRACT:
+Every Agent 1 finding carries a stable finding_id (e.g. "A1-006"). When your
+reconciliation item maps to an Agent 1 finding, populate "matched_finding_ids"
+with the exact id(s) that appear in Agent 1's output. Never invent ids.
 
-Apply ALL Anti-Hallucination Rules.
+Allowed issue_type values:
+1. "true_missed_item"
+   Agent 1 did not identify the underlying issue anywhere.
+
+2. "severity_disagreement"
+   Agent 1 found the issue, but you believe severity is materially wrong.
+
+3. "assessment_refinement"
+   Agent 1 found the issue, but its legal/economic characterization should be
+   corrected, narrowed, or expanded.
+
+4. "factual_or_logic_error"
+   Agent 1 made an internally inconsistent or objectively incorrect statement.
+
+5. "classification_error"
+   Agent 1 used the wrong category, disposition, market classification, or
+   transaction characterization.
+
+6. "unsupported_inference"
+   Agent 1 reached a conclusion not adequately supported by quoted agreement text.
+
+NEVER label an existing Agent 1 finding as a "missed_item".
+
+EVIDENCE DISCIPLINE:
+- Distinguish contractual text from your inference.
+- Do not invent provisions.
+- Do not assume an absent definition means an absent operative protection unless
+  the relevant closing conditions/covenants have also been checked.
+- If full text needed to verify a conclusion is unavailable, say "requires verification".
+- Do not infer "no fraud carve-out" merely because a general cap exists unless
+  fraud/exclusive-remedy provisions have been checked.
+- Do not mention arbitration economics unless arbitration language exists in the agreement.
+- Do not call missing working-capital adjustment automatically critical. Consider
+  transaction structure, pricing mechanism, and whether a working-capital true-up is expected.
+- Analyze each provision from the correct party perspective. An earnout controlled
+  by Buyer may principally disadvantage Seller/earnout recipients rather than Buyer.
+
+LEGAL TERMINOLOGY:
+- A deductible basket permits recovery only for losses above the threshold.
+- A tipping/first-dollar basket permits recovery from the first dollar once the
+  threshold is exceeded.
+Flag terminology errors.
+
+INTERNAL CONSISTENCY:
+Check Agent 1 for:
+- duplicate findings;
+- contradictory findings;
+- inconsistent category numbering/names;
+- mathematical errors;
+- undefined-vs-narrowly-defined terminology errors;
+- mismatch between quoted text and summary.
+
+TONE:
+Use neutral legal-review terminology.
+Avoid loaded rhetoric such as: "roach motel", "catastrophic", "hostile drafting",
+"trap", or "forced-close trap" unless directly quoting the document/user.
+Prefer: "materially buyer-adverse", "unusually restrictive", "significant risk
+allocation", or "potentially below-market".
+
+SEVERITY:
+Do not upgrade severity merely for emphasis.
+Explain WHY the existing severity is wrong using transaction mechanics and text.
+
+OUTPUT REQUIREMENT:
+Every criticism of Agent 1 MUST include:
+- whether Agent 1 already detected the issue;
+- the matching Agent 1 finding_id(s), if any;
+- what is actually new;
+- evidence;
+- confidence.
 
 Output ONLY valid JSON:
 {
-  "industry_confirmed": ["array of confirmed verticals"],
-  "vertical_specific_gaps": [
+  "reconciliation": [
     {
-      "check_id": "string (e.g. TECH-SAAS-02)",
-      "description": "string",
-      "severity": "critical | high | moderate | low",
-      "found": true | false,
-      "detail": "string"
+      "issue": "string",
+      "agent1_detected": true | false,
+      "agent1_match": "string or null — quote or concise identification of matching Agent 1 finding",
+      "matched_finding_ids": ["array of Agent 1 finding ids that correspond, e.g. 'A1-006'; empty if none"],
+      "issue_type": "true_missed_item | severity_disagreement | assessment_refinement | factual_or_logic_error | classification_error | unsupported_inference",
+      "agent1_severity": "string or null",
+      "critic_severity": "string or null",
+      "new_information": "string",
+      "evidence": "string",
+      "requires_verification": true | false,
+      "confidence": "HIGH | MEDIUM | LOW"
     }
   ],
-  "corrections": [
-    {
-      "category": "string",
-      "issue_type": "mistake | missed_item | underestimated_risk | hallucination",
-      "description": "string (what first reviewer got wrong or missed)",
-      "correct_assessment": "string",
-      "severity": "critical | high | medium | low"
-    }
-  ],
-  "missed_risks": ["array of risks first reviewer completely missed"],
-  "overall_critique": "string",
-  "specialist_focus_summary": "string (2-4 sentences: purchase price mechanics, working capital adequacy, escrow sizing, earnout risk)",
-  "ghost_references": ["any referenced Schedules/Exhibits not provided in text"]
+  "true_missed_risks": ["array of strings"],
+  "agent1_internal_errors": ["array of strings"],
+  "overall_critique": "string"
 }`;
 
-  const userPrompt = `M&A MASTER CHECKLIST (Parts A–E):
-${MA_CRITERIA}
-
-CONTRACT TEXT:
+  const userPrompt = `<AGREEMENT>
 ${contractText.substring(0, 600000)}
+</AGREEMENT>
 
-INDEMNITY HUNTER'S REVIEW (JSON):
-${analystOutput.substring(0, 4000)}
+<AGENT_1_OUTPUT>
+${analystOutput}
+</AGENT_1_OUTPUT>
 
-Hunt missing economic infrastructure. Audit the first review. Output structured JSON only.`;
+Perform the reconciliation review.
+
+MANDATORY PROCEDURE:
+
+STEP 1:
+Read ALL Agent 1 findings before generating corrections.
+
+STEP 2:
+Create an internal inventory of every underlying issue Agent 1 detected.
+
+STEP 3:
+For every issue you identify independently, semantically compare it against
+that inventory.
+
+STEP 4:
+If Agent 1 already identified the underlying issue:
+    agent1_detected = true
+    issue_type CANNOT be "true_missed_item"
+
+STEP 5:
+Only use "true_missed_item" when no semantically equivalent Agent 1 finding exists.
+
+STEP 6:
+Check whether your conclusion is supported by the actual agreement text.
+If not fully verifiable:
+    requires_verification = true
+
+STEP 7:
+Check Agent 1 for internal errors independently of substantive omissions.
+
+Return only the requested structured JSON.`;
 
   const _criticStart = Date.now();
   console.log(`[LLM] Critic (${MODELS.critic}) — request started (${contractText.length.toLocaleString()} chars contract)`);
@@ -424,7 +563,7 @@ Hunt missing economic infrastructure. Audit the first review. Output structured 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LLM #3 — CONTRADICTION HUNTER + FINAL ADJUDICATOR (Gemini 2.0 Flash)
+// LLM #3 — CONTRADICTION HUNTER + FINAL ADJUDICATOR (nvidia/nemotron-3-ultra-550b-a55b:free)
 // ─────────────────────────────────────────────────────────────────────────────
 export async function runAdjudicator(
   client: OpenAI,
@@ -512,6 +651,28 @@ AGGREGATION RULES (apply rigorously):
 2. Findings in BOTH specialist outputs → ✓✓ Confirmed (high confidence).
 3. Findings in ONE specialist only → ◐ Single-Source (report, do not suppress).
 4. New findings from your contradiction analysis → ★ New Finding.
+
+RECONCILIATION-DRIVEN SYNTHESIS (mechanical mapping — do NOT reconstruct from prose):
+The Critic (Agent 2) is a RECONCILIATION agent, not a second reviewer. Its output is
+structured as "reconciliation[]" items, each with:
+  - agent1_detected:   boolean
+  - issue_type:        true_missed_item | severity_disagreement | assessment_refinement |
+                       factual_or_logic_error | classification_error | unsupported_inference
+  - matched_finding_ids: Agent 1 finding ids (e.g. ["A1-006"]) this item refers to
+
+Apply this mapping to every major finding in your report:
+  • NEW        — issue_type = "true_missed_item" (Agent 1 did not detect it).
+  • CONFIRMED  — the Critic's reconciliation item has agent1_detected = true AND
+                 issue_type = "assessment_refinement" with no severity change (critic_severity
+                 equals agent1_severity). Agent 1 already had it; nothing new.
+  • REFINED    — agent1_detected = true AND issue_type = "assessment_refinement" or
+                 "classification_error" (Critic narrowed/expanded/corrected the characterization).
+  • DISPUTED   — issue_type = "severity_disagreement" or "unsupported_inference" or
+                 "factual_or_logic_error" (the Critic disagrees with severity or support).
+A "true_missed_item" must NEVER be a duplicate of an Agent 1 finding the Critic itself
+acknowledged. Never take credit in the report for a risk the Critic mapped back to an
+existing Agent 1 finding — if matched_finding_ids is non-empty, mark it CONFIRMED/REFINED/
+DISPUTED, never NEW. Prefer the Critic's corrected severity when DISPUTED, but explain why.
 
 SCORING RUBRIC:
 • 90-100: Exceptional, balanced. Low risk. Proceed immediately.
@@ -910,7 +1071,12 @@ Answer: Does a disproportionate effects carve-back exist? Quote exact language o
 [RECONCILER OUTPUT INJECTED POST-GENERATION — see report body]
 
 ### SPECIALIST CONSENSUS MAP
-[For each major finding: ✓✓ Confirmed (both specialists) / ◐ Single-Source (one specialist) / ★ New Finding (found here only)]
+[For each major finding, classify mechanically from the Critic's reconciliation[] items (matched_finding_ids + issue_type):
+  ★ NEW — issue_type = true_missed_item (no Agent 1 match)
+  ✓✓ CONFIRMED — agent1_detected = true, no severity change
+  ⟳ REFINED — agent1_detected = true, characterization corrected/narrowed/expanded
+  ⚠ DISPUTED — severity_disagreement / unsupported_inference / factual_or_logic_error
+Never mark a finding NEW if the Critic mapped it to an existing Agent 1 finding.]
 
 ### DETAILED ANALYSIS BY CHECKLIST POINT
 
@@ -1104,13 +1270,13 @@ L3-B INSTRUCTION: Apply CONTESTED protocol — re-surface all suppressed items, 
 `;
   }
 
-  const userPrompt = `INDEMNITY HUNTER REVIEW (Specialist #1):
-${analystOutput.substring(0, 2500)}
+  const userPrompt = `INDEMNITY HUNTER REVIEW (Specialist #1) — findings carry stable finding_ids (e.g. A1-001):
+${analystOutput.substring(0, 20000)}
 ${analystClassificationBlock}
-ECONOMIC ENGINE HUNTER REVIEW (Specialist #2):
-${criticOutput.substring(0, 2500)}
+CRITIC / RECONCILIATION AGENT REVIEW (Specialist #2) — reconciliation[] items map to Agent 1 via matched_finding_ids:
+${criticOutput.substring(0, 30000)}
 ${contractSection}
-Apply all aggregation rules (L3-A through L3-D). Elevate any CRITICAL from either specialist. Apply L3-B cross-layer reconciliation using the classification metadata above. Generate the final report in the exact Markdown format specified.`;
+Apply all aggregation rules (L3-A through L3-D) and the RECONCILIATION-DRIVEN SYNTHESIS mapping (NEW / CONFIRMED / REFINED / DISPUTED). Elevate any CRITICAL from either specialist. Apply L3-B cross-layer reconciliation using the classification metadata above. Generate the final report in the exact Markdown format specified.`;
 
   const _adjudicatorStart = Date.now();
   console.log(`[LLM] Adjudicator (${MODELS.adjudicator}) — request started (${contractText.length.toLocaleString()} chars contract)`);
