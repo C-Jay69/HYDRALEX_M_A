@@ -447,9 +447,9 @@ export default function AnalyzePage() {
         }}
       >
         {[
-          { step: "1", label: "Analyst", desc: "First-pass review", model: "Gemini 2.5 Flash" },
-          { step: "2", label: "Critic", desc: "Adversarial audit", model: "Gemini 2.5 Flash" },
-          { step: "3", label: "Adjudicator", desc: "Final verdict + score", model: "Gemma 4 31B" },
+          { step: "1", label: "Analyst", desc: "First-pass review", model: "Gemma 4 31B (free)" },
+          { step: "2", label: "Critic", desc: "Adversarial audit", model: "Laguna XS 2.1 (free)" },
+          { step: "3", label: "Adjudicator", desc: "Final verdict + score", model: "Nemotron 3 Ultra (free)" },
         ].map(({ step, label, desc, model }) => (
           <div key={step} style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: "180px" }}>
             <div

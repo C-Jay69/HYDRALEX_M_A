@@ -44,15 +44,15 @@ Still flag all CRITICAL structural defects regardless of party — but frame ris
 `;
 }
 
-// Model configuration — confirmed working, all with 1M+ context for large contracts
-// Analyst:     Gemini 2.5 Flash       — 1M ctx, Indemnity Hunter
-// Critic:      Gemini 2.5 Flash Lite  — 1M ctx, Economic Engine Hunter
-// Adjudicator: Gemini 2.0 Flash       — 1M ctx, Contradiction Hunter + final synthesis
-export const VERSION = "1.0.1-final-fix";
+// Model configuration — OpenRouter FREE models only (all end in :free)
+// Analyst:     google/gemma-4-31b-it:free     — 256K ctx, Indemnity Hunter
+// Critic:      poolside/laguna-xs-2.1:free     — 256K ctx, Economic Engine Hunter
+// Adjudicator: nvidia/nemotron-3-ultra-550b-a55b:free — 1M ctx, Contradiction Hunter + final synthesis
+export const VERSION = "1.1.0-openrouter-free";
 export const MODELS = {
-  analyst: "google/gemini-2.5-flash",
-  critic: "google/gemini-2.5-flash-lite",
-  adjudicator: "google/gemini-2.5-pro",
+  analyst: "google/gemma-4-31b-it:free",
+  critic: "poolside/laguna-xs-2.1:free",
+  adjudicator: "nvidia/nemotron-3-ultra-550b-a55b:free",
 };
 
 export function getOpenRouterClient() {
@@ -279,7 +279,7 @@ Output ONLY valid JSON:
 ${MA_CRITERIA}
 
 CONTRACT TEXT:
-${contractText.substring(0, 800000)}
+${contractText.substring(0, 600000)}
 
 Detect the industry vertical first. Then systematically apply the full checklist. Hunt liability flow reversals. Output structured JSON only.`;
 
@@ -394,7 +394,7 @@ Output ONLY valid JSON:
 ${MA_CRITERIA}
 
 CONTRACT TEXT:
-${contractText.substring(0, 800000)}
+${contractText.substring(0, 600000)}
 
 INDEMNITY HUNTER'S REVIEW (JSON):
 ${analystOutput.substring(0, 4000)}
