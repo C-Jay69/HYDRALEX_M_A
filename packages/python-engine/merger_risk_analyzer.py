@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from formation_validator import FormationValidator, FormationValidationResult
+
 @dataclass
 class RiskFinding:
     """Individual risk finding from document analysis"""
@@ -35,6 +37,12 @@ class AnalysisResult:
     must_fix_items: List[Dict]
     adjusted_score_if_fixed: int
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+    merger_structure_valid: bool = True
+    currency_specified: bool = True
+    phantom_references: List[str] = field(default_factory=list)
+    mismatched_sections: List[str] = field(default_factory=list)
+    tax_gap_detected: bool = False
+    formation_deductions: int = 0
 
 _DEFAULT_CONFIG = str(Path(__file__).parent / "merger_scoring_config.yaml")
 
@@ -48,6 +56,9 @@ class MergerRiskAnalyzer:
         
         self.base_score = self.config['config']['base_score']
         self.skeleton_leniency = self.config['config']['skeleton_draft_leniency']
+        
+        # Formation validator (runs BEFORE main checks)
+        self.formation_validator = FormationValidator(self.config)
         
         # Compile regex patterns for faster detection
         self._compile_patterns()
@@ -77,6 +88,20 @@ class MergerRiskAnalyzer:
         """
         findings = []
         
+        # Run formation validation FIRST (pre-analysis structural checks)
+        formation_result = self.formation_validator.run(document_text)
+        
+        # Convert FormationFindings to RiskFindings and prepend
+        for ff in formation_result.findings:
+            findings.append(RiskFinding(
+                rule=ff.rule,
+                deduction=ff.deduction,
+                description=ff.description,
+                severity=ff.severity,
+                location=ff.location,
+                suggestion=ff.suggestion,
+            ))
+        
         # Run all detection checks
         findings.extend(self._check_indemnification(document_text))
         findings.extend(self._check_earnout(document_text))
@@ -91,7 +116,7 @@ class MergerRiskAnalyzer:
         findings.extend(self._check_escrow_and_security(document_text))
         findings.extend(self._check_documentation_quality(document_text))
         
-        # Calculate raw score
+        # Calculate raw score (formation deductions included in total)
         total_deductions = sum(f.deduction for f in findings)
         raw_score = max(0, self.base_score - total_deductions)
         
@@ -132,7 +157,13 @@ class MergerRiskAnalyzer:
             strengths=strengths,
             missed_items=missed_items,
             must_fix_items=must_fix_items,
-            adjusted_score_if_fixed=adjusted_score
+            adjusted_score_if_fixed=adjusted_score,
+            merger_structure_valid=formation_result.merger_structure_valid,
+            currency_specified=formation_result.currency_specified,
+            phantom_references=formation_result.phantom_references,
+            mismatched_sections=formation_result.mismatched_sections,
+            tax_gap_detected=formation_result.tax_gap_detected,
+            formation_deductions=formation_result.total_deduction
         )
     
     # ============================================================
@@ -686,6 +717,19 @@ class MergerRiskAnalyzer:
         output.append("═══════════════════════════════════════════════════")
         output.append(f"ADJUSTED SCORE IF FIXES APPLIED: {result.adjusted_score_if_fixed}/100")
         output.append("═══════════════════════════════════════════════════")
+        output.append("")
+        output.append("═══════════════════════════════════════════════════")
+        output.append("FORMATION VALIDITY")
+        output.append("═══════════════════════════════════════════════════")
+        output.append(f"Merger structure legally operative: {'✅ YES' if result.merger_structure_valid else '❌ NO'}")
+        output.append(f"Currency specified: {'✅ YES' if result.currency_specified else '❌ NO'}")
+        output.append(f"Tax gap detected: {'❌ YES' if result.tax_gap_detected else '✅ NO'}")
+        if result.phantom_references:
+            output.append(f"👻 Phantom references ({len(result.phantom_references)}): {', '.join(result.phantom_references[:3])}")
+        if result.mismatched_sections:
+            output.append(f"⚠️ Mismatched sections: {', '.join(result.mismatched_sections[:5])}")
+        output.append(f"Formation deductions applied: {result.formation_deductions} points")
+        output.append("")
         
         return "\n".join(output)
 

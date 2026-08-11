@@ -317,3 +317,303 @@ training_feedback:
     - clause_type: "specific_performance"
       pattern: "specific performance|equitable relief"
       message: "No specific performance right — money damages only if party refuses to close"
+
+# ============================================================
+# FORMATION VALIDATOR CONFIGURATION
+# All deductions and patterns are overridable here without
+# touching Python code.
+# ============================================================
+
+formation_validator:
+
+  # ----------------------------------------------------------
+  # Deduction values (points subtracted from base score)
+  # ----------------------------------------------------------
+  deductions:
+
+    # Check 1: Merger formation
+    weak_merger_language: 12          # "intend this to be a merger" with no operative language
+    missing_merger_element: 4         # per missing structural element (surviving entity, statute, etc.)
+    merger_element_cap: 16            # maximum deduction for missing elements combined
+
+    # Check 2: Section header/content mismatch
+    header_content_mismatch_absent: 4    # header keyword completely absent from content
+    header_content_mismatch_negated: 10  # header keyword present but affirmatively negated
+
+    # Check 3: Phantom references
+    phantom_reference: 4              # per phantom reference detected
+    phantom_reference_cap: 12         # maximum combined deduction for phantoms
+
+    # Check 4: Tax representation completeness
+    no_domestic_tax_rep_with_foreign_disclaimer: 10  # foreign disclaimer + no domestic rep
+    empty_tax_section: 7                              # tax section exists but no reps
+
+    # Check 5: Litigation consistency (no deduction — reporting flag only)
+    litigation_consistency_flag: 0
+
+    # Check 6: Administrative completeness
+    missing_admin_field_base: 2       # per missing field (date, jurisdiction, notices)
+    admin_field_cap: 8                # maximum combined deduction for admin gaps
+
+    # Check 6b: Currency specification
+    currency_not_specified_cross_border: 5   # dollar amounts + cross-border + no currency spec
+
+    # Check 7: Complete tax silence
+    complete_tax_silence: 8           # no tax reps, no section, no disclaimer at all
+
+  # ----------------------------------------------------------
+  # Section header → expected content keywords
+  # If a section has this header but NOT these keywords,
+  # it's flagged as a mismatch.
+  # Add/remove entries to tune without code changes.
+  # ----------------------------------------------------------
+  section_content_map:
+
+    CONFIDENTIALITY:
+      - confidential
+      - non-disclosure
+      - proprietary information
+      - disclose
+      - disclosure
+      - keep secret
+      - maintain in confidence
+
+    INDEMNIFICATION:
+      - indemnif
+      - hold harmless
+      - defend
+      - losses
+      - claims
+      - damages
+
+    REPRESENTATIONS AND WARRANTIES:
+      - represents
+      - warrants
+      - representation
+      - warranty
+
+    CLOSING CONDITIONS:
+      - condition
+      - satisfy
+      - waive
+      - precedent
+      - close
+
+    TERMINATION:
+      - terminat
+      - terminate
+      - termination right
+
+    GOVERNING LAW:
+      - governed by
+      - governing law
+      - laws of
+      - jurisdiction
+
+    INTELLECTUAL PROPERTY:
+      - intellectual property
+      - patent
+      - copyright
+      - trademark
+      - trade secret
+      - algorithm
+      - software
+      - ip
+
+    DATA INTEGRITY:
+      - data
+      - records
+      - information
+      - server
+      - backup
+      - recoverable
+
+    EMPLOYEES:
+      - employee
+      - staff
+      - personnel
+      - retain
+      - employment
+
+    ENTIRE AGREEMENT:
+      - entire agreement
+      - integration
+      - supersede
+      - prior agreement
+      - complete agreement
+
+    PURCHASE PRICE:
+      - purchase price
+      - consideration
+      - payment
+      - closing payment
+      - cash
+
+    TAX MATTERS:
+      - tax
+      - taxes
+      - return
+      - filing
+      - taxable
+
+  # ----------------------------------------------------------
+  # Phantom reference trigger phrases
+  # Presence of these phrases (without attached schedules)
+  # triggers phantom reference detection.
+  # ----------------------------------------------------------
+  phantom_triggers:
+    - "except as noted"
+    - "as set forth in schedule"
+    - "as listed in exhibit"
+    - "attached hereto as schedule"
+    - "attached hereto as exhibit"
+    - "as described in annex"
+    - "see schedule"
+    - "see exhibit"
+    - "as noted in schedule"
+    - "referenced in exhibit"
+    - "except as disclosed in schedule"
+    - "as set forth on exhibit"
+    - "as specified in schedule"
+    - "except as set forth in the disclosure schedule"
+    - "as set forth on the disclosure schedules"
+    - "schedule to be delivered"
+    - "exhibit to be attached"
+    - "as more fully described in schedule"
+
+  # ----------------------------------------------------------
+  # Weak merger language (non-operative intent phrases)
+  # If any of these match WITHOUT a strong_merger_phrase,
+  # the merger formation is flagged as defective.
+  # ----------------------------------------------------------
+  weak_merger_phrases:
+    - "\\bintend\\s+this\\s+to\\s+be\\s+a\\s+merger\\b"
+    - "\\bcontemplated\\s+merger\\b"
+    - "\\bproposed\\s+merger\\b"
+    - "\\bintended\\s+to\\s+constitute\\s+a\\s+merger\\b"
+    - "\\bexpect\\s+this\\s+to\\s+be\\s+a\\s+merger\\b"
+    - "\\bwill\\s+be\\s+structured\\s+as\\s+a\\s+merger\\b"
+
+  # ----------------------------------------------------------
+  # Strong merger language (operative execution phrases)
+  # Any ONE of these being present cancels weak_merger flag.
+  # ----------------------------------------------------------
+  strong_merger_phrases:
+    - "\\bshall\\s+merge\\s+with\\s+and\\s+into\\b"
+    - "\\bmerger\\s+shall\\s+become\\s+effective\\b"
+    - "\\bplan\\s+of\\s+merger\\b"
+    - "\\bsurviving\\s+corporation\\b"
+    - "\\bsurviving\\s+entity\\b"
+    - "\\beffective\\s+time\\s+of\\s+the\\s+merger\\b"
+    - "\\bmerger\\s+sub\\b"
+    - "\\bcertificate\\s+of\\s+merger\\b"
+    - "\\barticles\\s+of\\s+merger\\b"
+
+  # ----------------------------------------------------------
+  # Required merger structural elements
+  # Each key is a named element; at least one pattern per key
+  # must match for the element to be considered present.
+  # ----------------------------------------------------------
+  merger_structural_elements:
+
+    surviving_entity:
+      - "\\bsurviving\\s+(?:entity|corporation|company)\\b"
+      - "\\bsurvive\\s+the\\s+merger\\b"
+      - "\\bsurviving\\s+corporation\\b"
+
+    merger_statute:
+      - "\\bdelaware\\s+general\\s+corporation\\s+law\\b"
+      - "\\bdgcl\\b"
+      - "\\bbvi\\s+business\\s+companies\\s+act\\b"
+      - "\\bcompanies\\s+act\\b"
+      - "\\bpursuant\\s+to\\s+(?:the\\s+)?(?:laws?\\s+of|section\\s+\\d)\\b"
+      - "\\bgeneral\\s+corporation\\s+law\\b"
+
+    effective_time:
+      - "\\beffective\\s+time\\b"
+      - "\\beffective\\s+date\\s+of\\s+the\\s+merger\\b"
+      - "\\bupon\\s+filing\\s+of\\s+(?:the\\s+)?(?:certificate|articles)\\b"
+      - "\\beffective\\s+upon\\s+(?:the\\s+)?filing\\b"
+
+    merger_structure:
+      - "\\bforward\\s+(?:triangular\\s+)?merger\\b"
+      - "\\breverse\\s+(?:triangular\\s+)?merger\\b"
+      - "\\bdirect\\s+merger\\b"
+      - "\\bshort[- ]form\\s+merger\\b"
+      - "\\bmerger\\s+sub(?:sidiary)?\\b"
+      - "\\bwholly[- ]owned\\s+subsidiary\\b"
+
+  # ----------------------------------------------------------
+  # Administrative required fields
+  # ----------------------------------------------------------
+  admin_fields:
+
+    effective_date:
+      - "\\bdated\\s+(?:as\\s+of\\s+)?\\w+\\s+\\d{1,2},?\\s+\\d{4}\\b"
+      - "\\bthis\\s+\\w+\\s+day\\s+of\\b"
+      - "\\bas\\s+of\\s+\\w+\\s+\\d{1,2},?\\s+\\d{4}\\b"
+      - "\\beffective\\s+(?:as\\s+of\\s+)?\\w+\\s+\\d{1,2},?\\s+\\d{4}\\b"
+      - "\\b\\d{1,2}/\\d{1,2}/\\d{4}\\b"
+      - "\\b\\d{4}-\\d{2}-\\d{2}\\b"
+
+    currency:
+      - "\\busd\\b"
+      - "\\bu\\.s\\.\\s+dollars?\\b"
+      - "\\bunited\\s+states\\s+dollars?\\b"
+      - "\\beur\\b"
+      - "\\beuros?\\b"
+      - "\\bgbp\\b"
+      - "(?:£|€)\\s*[\\d,]+"
+
+    party_jurisdiction:
+      - "\\ba\\s+(?:delaware|nevada|cayman|bvi|british\\s+virgin\\s+islands)\\s+(?:corporation|company|llc|limited)\\b"
+      - "\\bincorporated\\s+(?:in|under)\\s+the\\s+laws\\s+of\\b"
+      - "\\borganized\\s+(?:and\\s+existing\\s+)?under\\s+the\\s+laws\\s+of\\b"
+
+    notice_provision:
+      - "\\bnotice\\s+(?:shall\\s+be\\s+)?(?:given|sent|delivered)\\b"
+      - "\\bwritten\\s+notice\\b"
+      - "\\bnotices?\\s+to\\s+(?:buyer|seller|the\\s+parties?)\\b"
+      - "\\bnotice\\s+address\\b"
+
+  # ----------------------------------------------------------
+  # Cross-border indicators
+  # Presence of these + dollar amounts + no currency spec
+  # triggers currency ambiguity finding.
+  # ----------------------------------------------------------
+  cross_border_indicators:
+    - "\\bbritish\\s+virgin\\s+islands\\b"
+    - "\\bluxembourg\\b"
+    - "\\boutside\\s+the\\s+united\\s+states\\b"
+    - "\\bforeign\\s+(?:tax|jurisdiction|country)\\b"
+    - "\\binternational\\b"
+    - "\\bcross[- ]border\\b"
+    - "\\bnon[- ]us\\b"
+    - "\\boffshore\\b"
+    - "\\bcayman\\s+islands\\b"
+    - "\\bisle\\s+of\\s+man\\b"
+
+  # ----------------------------------------------------------
+  # Domestic tax representation patterns
+  # At least one must match for domestic tax rep to be confirmed.
+  # ----------------------------------------------------------
+  domestic_tax_rep_patterns:
+    - "\\btax\\s+returns?\\s+(?:have\\s+been\\s+|duly\\s+)?filed\\b"
+    - "\\ball\\s+(?:material\\s+)?taxes\\s+(?:have\\s+been\\s+)?paid\\b"
+    - "\\bno\\s+(?:pending\\s+)?tax\\s+(?:audit|assessment|dispute|deficiency)\\b"
+    - "\\btax\\s+representations?\\s+and\\s+warranties\\b"
+    - "\\brepresents?\\s+(?:and\\s+warrants?\\s+)?(?:that\\s+)?(?:it\\s+has\\s+)?filed\\s+all\\s+(?:required\\s+)?tax\\s+returns?\\b"
+    - "\\ball\\s+tax\\s+liabilities\\b"
+    - "\\btaxes\\s+shown\\s+on\\s+(?:such\\s+)?returns?\\s+have\\s+been\\s+paid\\b"
+    - "\\bno\\s+tax\\s+lien\\b"
+    - "\\btax\\s+compliance\\b"
+
+  # ----------------------------------------------------------
+  # Foreign tax disclaimer patterns
+  # ----------------------------------------------------------
+  foreign_tax_disclaimer_patterns:
+    - "\\bno\\s+representations?\\s+regarding\\s+taxes?\\s+outside\\b"
+    - "\\bmakes?\\s+no\\s+(?:tax\\s+)?representations?\\s+(?:regarding|with\\s+respect\\s+to)\\s+(?:taxes?\\s+)?outside\\b"
+    - "\\bno\\s+(?:tax\\s+)?warranty\\s+(?:for|regarding)\\s+(?:non[- ]us|foreign)\\s+taxes?\\b"
+    - "\\bforeign\\s+tax\\s+(?:representations?\\s+are\\s+)?disclaimed\\b"
+    - "\\bno\\s+representations?\\s+(?:or\\s+warranties?\\s+)?(?:with\\s+respect\\s+to\\s+)?(?:taxes?\\s+)?outside\\s+the\\s+united\\s+states\\b"

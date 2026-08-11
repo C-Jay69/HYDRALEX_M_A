@@ -220,8 +220,8 @@ class TestMergerRiskAnalyzer(unittest.TestCase):
         self.assertGreaterEqual(result.final_score, 85, f"Score {result.final_score} should be >=85")
         self.assertIn(result.risk_level, ["🟢 Low Risk", "✅ Minimal Risk"])
         
-        # Should have very few findings
-        self.assertLess(len(result.findings), 3)
+        # Should have very few findings (main engine + formation validation layer)
+        self.assertLessEqual(len(result.findings), 3)
         
         print(f"\n✅ Test 5 Passed: Gold standard scored {result.final_score}/100")
     

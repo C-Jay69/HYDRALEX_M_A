@@ -52,6 +52,12 @@ class AnalysisResponse(BaseModel):
     must_fix: List[Dict[str, Any]]
     arbitration_threshold: Optional[Dict[str, Any]]
     scorecard_url: Optional[str] = None
+    merger_structure_valid: bool = True
+    currency_specified: bool = True
+    phantom_references: List[str] = []
+    mismatched_sections: List[str] = []
+    tax_gap_detected: bool = False
+    formation_deductions: int = 0
 
 class HealthResponse(BaseModel):
     status: str
@@ -153,7 +159,13 @@ async def analyze_document(
         findings=result.findings if options.include_detailed_findings else [],
         interaction_stacks=result.interaction_stacks_triggered,
         must_fix=result.must_fix_items,
-        arbitration_threshold=result.arbitration_threshold
+        arbitration_threshold=result.arbitration_threshold,
+        merger_structure_valid=result.merger_structure_valid,
+        currency_specified=result.currency_specified,
+        phantom_references=result.phantom_references,
+        mismatched_sections=result.mismatched_sections,
+        tax_gap_detected=result.tax_gap_detected,
+        formation_deductions=result.formation_deductions
     )
     
     # Generate scorecard PDF if requested
