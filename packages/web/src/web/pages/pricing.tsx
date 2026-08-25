@@ -1,5 +1,7 @@
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
-import { Check, Scale, Zap, Building2, Globe, Calendar, ArrowRight } from "lucide-react";
+import { Check, Scale, Zap, Building2, Globe, Calendar, ArrowRight, Loader2, Settings } from "lucide-react";
+import { api } from "../lib/api";
 
 type Tier = {
   id: string;
@@ -98,9 +100,114 @@ const TIERS: Tier[] = [
   },
 ];
 
+const PAID_PLANS = ["professional", "business", "enterprise"];
+
 export default function PricingPage() {
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<string | null>(null);
+
+  // Reflect checkout result from the Stripe redirect and load the user's plan.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkout = params.get("checkout");
+    const plan = params.get("plan");
+    if (checkout === "success") {
+      setSuccessMsg(
+        plan
+          ? `You're now subscribed to the ${plan.charAt(0).toUpperCase() + plan.slice(1)} plan.`
+          : "Your subscription is active. Welcome aboard!",
+      );
+    } else if (checkout === "cancelled") {
+      setCheckoutError("Checkout was cancelled. No charge was made.");
+    }
+    if (checkout) {
+      window.history.replaceState({}, "", "/pricing");
+    }
+
+    (async () => {
+      try {
+        const res = await api.me.$get();
+        if (res.ok) {
+          const data = (await res.json()) as { quota?: { plan?: string } };
+          setCurrentPlan(data.quota?.plan ?? "free");
+        }
+      } catch {
+        /* not signed in — leave currentPlan null */
+      }
+    })();
+  }, []);
+
+  const startCheckout = async (plan: string) => {
+    setCheckoutError(null);
+    setLoadingPlan(plan);
+    try {
+      const res = await api.billing.checkout.$post({ json: { plan } });
+      if (res.status === 401) {
+        // Not signed in — send them to sign up, then they can subscribe.
+        window.location.href = `/sign-up?next=/pricing&plan=${plan}`;
+        return;
+      }
+      if (!res.ok) {
+        setCheckoutError("Could not start checkout. Please try again or contact support.");
+        setLoadingPlan(null);
+        return;
+      }
+      const data = (await res.json()) as { url: string };
+      window.location.href = data.url;
+    } catch (err) {
+      console.error("checkout failed", err);
+      setCheckoutError("Could not start checkout. Please try again or contact support.");
+      setLoadingPlan(null);
+    }
+  };
+
+  const openPortal = async () => {
+    setCheckoutError(null);
+    setPortalLoading(true);
+    try {
+      const res = await api.billing.portal.$post();
+      if (res.status === 404) {
+        setCheckoutError("No active subscription found to manage.");
+        setPortalLoading(false);
+        return;
+      }
+      if (!res.ok) {
+        setCheckoutError("Could not open billing portal. Please try again or contact support.");
+        setPortalLoading(false);
+        return;
+      }
+      const data = (await res.json()) as { url: string };
+      window.location.href = data.url;
+    } catch (err) {
+      console.error("portal failed", err);
+      setCheckoutError("Could not open billing portal. Please try again or contact support.");
+      setPortalLoading(false);
+    }
+  };
+
+  const isCurrentPlanPaid = currentPlan !== null && PAID_PLANS.includes(currentPlan);
+
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg-primary)" }}>
+      {successMsg && (
+        <div style={{
+          maxWidth: "820px",
+          margin: "24px auto 0",
+          padding: "12px 16px",
+          background: "rgba(16,185,129,0.12)",
+          border: "1px solid rgba(16,185,129,0.4)",
+          borderRadius: "8px",
+          color: "#6ee7b7",
+          fontSize: "13px",
+          textAlign: "center",
+        }}>
+          {successMsg}
+        </div>
+      )}
+
       {/* Hero */}
       <div style={{ textAlign: "center", padding: "80px 24px 48px" }}>
         <div style={{
@@ -150,6 +257,30 @@ export default function PricingPage() {
         }}>
           <Calendar size={12} /> Annual billing saves 2 months
         </div>
+
+        {isCurrentPlanPaid && (
+          <button
+            onClick={openPortal}
+            disabled={portalLoading}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              marginTop: "16px",
+              padding: "9px 18px",
+              background: "transparent",
+              border: "1px solid var(--border)",
+              borderRadius: "7px",
+              color: "var(--text-secondary)",
+              fontFamily: "Poppins, sans-serif",
+              fontWeight: 600,
+              fontSize: "12px",
+              cursor: portalLoading ? "wait" : "pointer",
+            }}
+          >
+            <Settings size={13} /> {portalLoading ? "Opening…" : "Manage your subscription"}
+          </button>
+        )}
       </div>
 
       {/* Plans grid */}
@@ -264,9 +395,11 @@ export default function PricingPage() {
                   </button>
                 </Link>
               ) : (
-                <a
-                  href={tier.href}
+                <button
+                  onClick={() => startCheckout(tier.id)}
+                  disabled={loadingPlan !== null}
                   style={{
+                    width: "100%",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -279,17 +412,42 @@ export default function PricingPage() {
                     fontFamily: "Poppins, sans-serif",
                     fontWeight: 600,
                     fontSize: "12px",
+                    cursor: loadingPlan === tier.id ? "wait" : "pointer",
                     textDecoration: "none",
-                    cursor: "pointer",
+                    opacity: loadingPlan !== null && loadingPlan !== tier.id ? 0.6 : 1,
                   }}
                 >
-                  <Calendar size={13} /> {tier.cta}
-                </a>
+                  {loadingPlan === tier.id ? (
+                    <>
+                      <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Redirecting…
+                    </>
+                  ) : (
+                    <>
+                      {tier.cta}
+                    </>
+                  )}
+                </button>
               )}
             </div>
           );
         })}
       </div>
+
+      {checkoutError && (
+        <div style={{
+          maxWidth: "1100px",
+          margin: "0 auto 24px",
+          padding: "12px 16px",
+          background: "rgba(239,68,68,0.1)",
+          border: "1px solid rgba(239,68,68,0.4)",
+          borderRadius: "8px",
+          color: "#fca5a5",
+          fontSize: "13px",
+          textAlign: "center",
+        }}>
+          {checkoutError}
+        </div>
+      )}
 
       {/* Pricing rationale */}
       <div style={{

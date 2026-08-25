@@ -39,9 +39,9 @@ export default function SignInPage() {
       <div style={{ width: "100%", maxWidth: "400px" }}>
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: "36px" }}>
-          <img src="/logo_png" alt="HydraForge" style={{ width: "160px", height: "auto", marginBottom: "20px" }} />
+          <img src="/logo_png" alt="HydraLex M&A" style={{ width: "160px", height: "auto", marginBottom: "20px", transform: "translateX(12px)" }} />
           <h1 style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700, fontSize: "1.5rem", color: "var(--text-primary)", marginBottom: "6px" }}>
-            Sign in to HydraForge
+            Sign in to HydraLex M&A
           </h1>
           <p style={{ color: "var(--text-muted)", fontSize: "13px" }}>
             M&A document intelligence platform

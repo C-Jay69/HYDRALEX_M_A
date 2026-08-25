@@ -121,3 +121,8 @@ h1, h2, h3, h4, h5 {
 .step-active { color: var(--accent-gold); }
 .step-done { color: var(--risk-low); }
 .step-pending { color: var(--text-muted); }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

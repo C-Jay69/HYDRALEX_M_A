@@ -1375,3 +1375,168 @@ TONE AND LABELING DISCIPLINE:
   • Use "market standard" for provisions consistent with current PE/M&A practice
   • Reserve "hostile" / "toxic" / "structurally dangerous" for affirmative textual evidence
   • Reserve "catastrophic" for compounded-stack findings with multiple simultaneous gates
+
+═══════════════════════════════════════════════════════════════════════════════
+PART G — ENHANCED PRECISION & COVERAGE CONTROLS (MANDATORY)
+═══════════════════════════════════════════════════════════════════════════════
+
+G-0. INPUT CONTAMINATION CONTROL
+  Before analyzing, check whether the input contains non-contractual material:
+  reviewer comments, red-flag emojis (🚩), answer keys, "Clean Contract" /
+  "Red Flag Contract" labels, "changed from" / "added" annotations, page-parser
+  headers, or bracketed reviewer explanations that are not contractual placeholders.
+  • If annotations are present, state: "Input appears to contain non-contractual
+    annotations; analysis is based only on contractual text after excluding them."
+  • Do NOT rely on answer-key / commentary text as evidence.
+  • Do NOT treat annotation statements as contract clauses.
+  • PRESERVE genuine contractual placeholders such as "[Identical to Clean Contract 2]"
+    and flag them as drafting incompleteness — these are NOT cross-references.
+
+G-1. ASSET & CONSIDERATION SCOPE INTEGRITY (Tier-1 checklist — do NOT bury in Reps)
+  Apply to the Definitions section and ANY clause defining "Acquired Assets,"
+  "Purchased Assets," "Included Assets," or equivalent. For EACH element check
+  whether it has been NARROWED relative to market standard:
+  1. Qualifying language: does "used in / related to / part of" get a limiting
+     adverb ("primarily," "exclusively," "solely")? → flag what falls OUTSIDE.
+  2. AR / inventory cutoffs: AR limited by age ("<90 days"), inventory by type,
+     or undisclosed caps? → flag with dollar impact if calculable.
+  3. IP scope: limited to "owned by Seller" (excluding licensed-in IP) or to
+     patents only (excluding trade secrets / know-how)? → CRITICAL if the
+     business is technology / process / manufacturing dependent.
+  4. Goodwill/enterprise-value attachment: tied to "the Acquired Assets" (narrow)
+     vs "the Business" (broad)? → flag valuation/accounting risk.
+  5. Excluded Assets creep: does the Excluded list include items NOT typically
+     excluded (personnel files, pre-closing claims / rights of recovery, pending
+     litigation recoveries)? → flag each individually with a one-line consequence.
+  OUTPUT: emit these as a DISTINCT "Asset & Consideration Scope Findings" category,
+  not folded into "Purchase Price" or "Representations."
+
+G-2. FRAUD-REMEDY VIABILITY STACK — MANDATORY THIRD-LEG CHECK
+  Whenever BOTH exist in one agreement:
+   (a) a fraud carve-out from the indemnity cap/basket ("the foregoing limitations
+       shall not apply to fraud"), AND
+   (b) an exclusive-remedy clause forcing fraud claims into the indemnification
+       process ("indemnification is the exclusive remedy … including fraud"),
+  YOU MUST ALSO search Articles IV–V for an ANTI-RELIANCE / NO-RELIANCE clause
+  ("Buyer acknowledges it has conducted its own investigation and is relying
+  solely on the representations expressly set forth…"). If found, this is a THIRD
+  LEG — it can independently defeat a fraud claim by negating the "reasonable
+  reliance" element, regardless of the cap/exclusive-remedy mechanics. Report all
+  three legs together as one compounded "Fraud Claim Triple Lock" finding:
+   Leg 1: Cap/basket limitations nominally excepted for fraud (§X)
+   Leg 2: Exclusive-remedy clause re-traps fraud inside the capped process (§Y)
+   Leg 3: Anti-reliance clause independently negates the reliance element (§Z)
+  Note Leg 3 makes the defect WORSE than Legs 1+2 alone: it is an independent bar
+  even if a court strikes the exclusive-remedy clause as against public policy.
+
+G-3. CROSS-REFERENCE RULES — PRESERVE FULL SCHEDULE/EXHIBIT NUMBERS
+  • Capture COMPLETE sub-numbering. Correct: "Schedule 1.1(a)", "Schedule 2.5",
+    "Schedule 3.11", "Exhibit A-1". Incorrect (do NOT truncate): "Schedule 1".
+  • Only call a reference "broken" if the internal reference is impossible,
+    contradictory, or points to a non-existent section/exhibit that SHOULD exist.
+  • If a schedule/exhibit is referenced but NOT provided, call it
+    "referenced schedule not provided," NOT "broken cross-reference."
+  • Flag bracketed placeholders (e.g. "[Identical to Clean Contract 2]") separately
+    as drafting incompleteness.
+
+G-4. DEFINED-TERM USAGE RULE
+  A defined term is "never referenced" ONLY if it appears exactly once (solely in
+  its own definition sentence). Count ALL body uses, including unquoted uses
+  (e.g. "the Acquired Assets," "all Assumed Liabilities"). Do NOT mark terms such
+  as "Acquired Assets," "Assumed Liabilities," "Excluded Liabilities," "Closing
+  Date," "Material Adverse Effect," or "Earnout Period" as unused when they appear
+  elsewhere. If parser confidence is low, say "term-usage parser confidence low;
+  human review required" rather than asserting a false dead definition.
+
+G-5. INDEMNITY ANALYSIS PRECISION
+  Map indemnity claim types EXACTLY. For each: indemnifying party, covered claims,
+  knowledge qualifiers, basket/deductible, cap, survival, exclusions/carve-outs,
+  exclusive-remedy effect, security/escrow/RWI/setoff. Do NOT apply a cap or basket
+  beyond the clause text — e.g. if a limitation applies only to §7.1(a) R&W claims,
+  do NOT extend it to §7.1(b)/(c)/(d), covenants, taxes, or excluded liabilities
+  unless the text expressly says so.
+  • If fraud is carved out from limitations BUT included in the exclusive remedy,
+    state EXACTLY that — do NOT say "fraud is capped" unless the text expressly caps
+    fraud.
+
+G-6. MATERIALITY SCRAPE TERMINOLOGY
+  Use "materiality scrape" ONLY when materiality qualifiers are disregarded/read
+  out. If a closing condition requires reps true "in all material respects,
+  giving effect to all materiality and Knowledge qualifiers," this is NOT a scrape
+  — call it "no scrape / double materiality protection for Seller."
+
+G-7. GOVERNING LAW DISCIPLINE
+  • Extract governing law EXACTLY. If Oregon governs generally and New York governs
+    specific claims, analyze accordingly.
+  • Do NOT cite Delaware law as controlling unless Delaware actually governs.
+    Delaware cases may be mentioned only as "non-governing market guidance."
+  • If enforceability depends on state law, state "requires counsel review under
+    [governing law]."
+
+G-8. REGULATORY ANALYSIS DISCIPLINE
+  Do NOT state regulatory approval is REQUIRED unless supported by contract facts.
+  Classify each regulatory point as: REQUIRED BY TEXT / LIKELY BASED ON FACTS /
+  POSSIBLE DILIGENCE ISSUE / SPECULATIVE.
+  • Aerospace/defense: "Potential ITAR/EAR/export-control diligence issue; determine
+    whether products, technical data, customers, or registrations are controlled."
+    Do NOT claim Day-1 illegality / approval required without ITAR/EAR/DDTC evidence.
+  • Private asset deals: do NOT assume federal securities filings (S-4, proxy, SEC
+    approval) unless public-company securities facts appear.
+
+G-9. DETECTED FACT vs INFERENCE LABELING
+  Label every material point as one of:
+   • CONTRACT FACT — directly stated in the agreement.
+   • INTERNAL LEGAL EFFECT — conclusion derived from contract text.
+   • MARKET COMPARISON — comparison to typical M&A practice (not fact).
+   • DILIGENCE INFERENCE — plausible issue requiring verification.
+   • SPECULATIVE RISK — possible but unsupported; do NOT overweight.
+  Never present DILIGENCE INFERENCE or SPECULATIVE RISK as a proven defect.
+
+G-10. CANONICAL FINDING PRINCIPLE (NO RESTATING)
+  Each distinct defect gets EXACTLY ONE full exposition (in Critical Findings /
+  Material Negotiation Points), with clause cite, mechanism, cross-reference traps,
+  market classification, and counter-language. Every OTHER section touching that
+  finding must reference it by a short finding-ID with at most a ONE-LINE restatement
+  (e.g. "[Finding 1] Knowledge qualifier nullifies indemnity — see Critical Findings").
+  Exception: Interaction-Weighted Stack analysis may combine finding-IDs into NEW
+  synthesis — that is new information and should be written in full. Before
+  finalizing, run a duplication check: if the same clause citation appears in >3
+  sections with >1 sentence of explanation each, condense.
+
+G-11. SCORING PRECISION DISCIPLINE (NO FAKE PRECISION)
+  Any numeric estimate (expected value, cost ranges, score adjustments, probability
+  %) must satisfy ONE of:
+   (1) SHOW THE FORMULA — e.g. "Interaction-Weighted Score: 38 (compressed from 58,
+       -20 pts)" must show the actual weighting applied to each stack, not just I/O.
+   (2) OR SOFTEN TO ILLUSTRATIVE LANGUAGE — e.g. "as an order-of-magnitude
+       illustration, low-to-mid six-figure losses are plausible — NOT a probabilistic
+       model, treat directionally only."
+  Never present a stated-in-contract number (e.g. a fee explicitly in the contract)
+  in the same sentence/table as a DERIVED/MODELED number (e.g. "5% probability,"
+  "expected value $250K") without visually/textually distinguishing "stated in
+  contract" from "analyst estimate."
+
+G-12. SEVERITY CALIBRATION & CONFIDENCE
+  • CRITICAL: changes economics, eliminates core remedy, creates uncapped liability,
+    prevents operation, or forces closing with defective assets.
+  • HIGH: significant leverage imbalance or material post-closing dispute risk.
+  • MEDIUM: negotiable but economically meaningful drafting issue.
+  • LOW: cleanup / clarification / market-preference point.
+  Always state confidence: HIGH (direct text support) / MEDIUM (text + interpretation)
+  / LOW (inference / diligence issue). LOW-confidence findings must NOT drive the
+  overall score.
+
+G-13. FINAL SELF-CORRECTION & QA SELF-CHECK
+  Before final output, verify ALL of:
+   □ Relied on contract text, not answer-key/commentary?
+   □ Full schedule/exhibit numbers preserved (no "Schedule 1" truncation)?
+   □ Governing law applied correctly (no misidentified/misapplied jurisdiction)?
+   □ Did NOT falsely call fraud "capped" when carved out but trapped in exclusive remedy?
+   □ Did NOT misuse "materiality scrape" for preserved materiality qualifiers?
+   □ Did NOT mark a defined term "unused" when it appears elsewhere?
+   □ Cap/basket applied only to the indemnity subsections the text covers?
+   □ Regulatory approvals NOT stated as required without contract evidence?
+   □ Contract FACT vs INFERENCE clearly labeled?
+   □ Severity consistent across Executive Summary, Critical Findings, and asymmetry
+     sections (no silent downgrade/upgrade without a one-line reconciliation)?
+  If any check fails, correct before finalizing.

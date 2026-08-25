@@ -149,8 +149,8 @@ class DocumentMetadata:
                     self.signatories.append(sig)
 
     def _extract_schedule_refs(self) -> None:
-        """Extract schedule and exhibit references"""
-        pattern = r'(?:Schedule|Exhibit|Annex|Appendix|Schedule\s+|Exhibit\s+)\s*([A-Z]?\d+[a-z]?)'
+        """Extract schedule and exhibit references (full sub-numbering, e.g. 1.1(a))."""
+        pattern = r'(?:Schedule|Exhibit|Annex|Appendix)\s+(\d+(?:\.\d+)*(?:\([a-zA-Z0-9]+\))?|[A-Z]+(?:-\d+)?)'
         self.schedule_refs = list(set(re.findall(pattern, self.text, re.IGNORECASE)))
 
     def _extract_party_names(self) -> None:

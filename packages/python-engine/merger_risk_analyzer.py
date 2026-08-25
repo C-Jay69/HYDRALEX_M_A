@@ -519,8 +519,13 @@ class MergerRiskAnalyzer:
                 suggestion="Remove duplicate sections and finalize document formatting"
             ))
         
-        # Check for missing schedules
-        schedule_refs = re.findall(r"Schedule\s+\d+[a-z]?[.)]?", text, re.IGNORECASE)
+        # Check for missing schedules — capture FULL sub-numbering
+        # (e.g. "1.1(a)", "2.5", "3.11"), not just the leading integer.
+        schedule_refs = re.findall(
+            r"(?:Schedule|Exhibit|Annex|Appendix)\s+(\d+(?:\.\d+)*(?:\([a-zA-Z0-9]+\))?|[A-Z]+(?:-\d+)?)",
+            text,
+            re.IGNORECASE,
+        )
         if schedule_refs:
             # This is a simplification; real check would verify existence
             findings.append(RiskFinding(

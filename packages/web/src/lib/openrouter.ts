@@ -464,6 +464,51 @@ Check Agent 1 for:
 - undefined-vs-narrowly-defined terminology errors;
 - mismatch between quoted text and summary.
 
+CONSISTENCY SWEEP (MANDATORY — run before finalizing):
+Build a table of clause-ID → every severity / market-classification label assigned
+to it anywhere in Agent 1's output (findings, overall_impression, asymmetry,
+specialist_focus_summary, etc.). If the SAME clause receives materially different
+severity treatment in different sections (e.g. called "reasonable" in one place and
+flagged as a cost-escalation risk elsewhere; "Market Standard" in one place and
+"forum bias" in another), you MUST either:
+  (a) reconcile to a single consistent severity judgment applied everywhere, OR
+  (b) if the difference is intentional (e.g. "market standard in isolation, but
+      elevated when combined with Buyer's specific circumstances"), explicitly say
+      so in BOTH locations using the same reconciling sentence.
+Do not allow a finding to be silently downgraded in the detailed analysis after
+being called "Critical" in the Executive Summary, or vice versa, without an
+explicit one-line reconciliation note.
+
+SPECIALIST OUTPUT QA GATE (verify Agent 1 against the contract before release):
+- Did Agent 1 rely on annotations / answer-key / commentary instead of contract text?
+- Did it preserve full schedule numbers ("Schedule 1.1(a)") and not truncate to "Schedule 1"?
+- Did it falsely classify referenced-but-not-provided schedules as "broken"?
+- Did it claim defined terms are "unused" when they appear elsewhere in the document?
+- Did it apply Delaware law when another law governs (or misapply governing law)?
+- Did it state "fraud is capped" when fraud is carved out of caps/baskets but trapped
+  in the exclusive-remedy / anti-reliance stack?
+- Did it mislabel preserved materiality + Knowledge qualifiers as a "materiality scrape"?
+- Did it apply a cap/basket to indemnity categories the limitation clause does not cover?
+- Did it overstate regulatory approvals or Day-1 illegality without contract evidence
+  (e.g. ITAR/EAR/SEC filings in a private asset deal)?
+- Did it present modeled/estimated numbers (expected value, probabilities) with false
+  precision, or without distinguishing "stated in contract" from "analyst estimate"?
+- Did it distinguish CONTRACT FACT from DILIGENCE INFERENCE / SPECULATIVE RISK?
+If any gate fails, return it as a "factual_or_logic_error" or "unsupported_inference"
+reconciliation item with the specific correction.
+
+FINAL RELEASE GATE (block client-facing release if any are true):
+1. Report relies on answer-key / commentary text.
+2. Governing law is misidentified.
+3. Fraud cap/basket treatment contradicts contract text.
+4. Schedule references are truncated.
+5. Defined-term audit produces obviously false "unused term" findings.
+6. Regulatory approvals are stated as required without contract evidence.
+7. Materiality-scrape terminology is incorrect.
+8. A critical finding lacks a section citation.
+9. A conclusion is materially stronger than its evidence supports.
+10. A QA gate above fails.
+
 TONE:
 Use neutral legal-review terminology.
 Avoid loaded rhetoric such as: "roach motel", "catastrophic", "hostile drafting",

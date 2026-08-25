@@ -1,8 +1,15 @@
+import { config } from "dotenv";
+import { fileURLToPath } from "node:url";
+// Load repo-root .env (holds DB + Stripe + OpenRouter secrets) when present.
+// In production these are injected by the host, so this is a no-op there.
+config({ path: fileURLToPath(new URL("../../.env", import.meta.url)) });
+
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { auth } from "./auth.js";
 import { analyses } from "./routes/analyses.js";
 import { admin } from "./routes/admin.js";
+import billing from "./routes/billing.js";
 import { authMiddleware, requireAuth } from "./middleware/auth.js";
 import { rateLimit, keyByUser, GENERAL_PER_MIN, AUTH_PER_MIN, ANALYSIS_PER_MIN } from "./middleware/ratelimit.js";
 import { db } from "./database.js";
@@ -49,7 +56,8 @@ const app = new Hono()
     }, 200);
   })
   .route("/analyses", analyses)
-  .route("/admin", admin);
+  .route("/admin", admin)
+  .route("/billing", billing);
 
 export type AppType = typeof app;
 export default app;
