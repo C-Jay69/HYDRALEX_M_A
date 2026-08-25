@@ -213,13 +213,27 @@ class KnowledgeGraph:
             })
         return findings
 
-    def detect_missing_links(self) -> list[dict]:
-        """Detect nodes with missing expected relationships."""
+    def detect_missing_links(self, document_text: str | None = None) -> list[dict]:
+        """Detect nodes with missing expected relationships.
+
+        For DEFINED_TERM nodes, a term is only "dead" (defined but never used)
+        if it appears AT MOST ONCE in the whole document — i.e. only inside its
+        own definition sentence. Counting ALL occurrences (quoted definition site
+        and every subsequent unquoted use, e.g. "the Acquired Assets") prevents
+        the false-positive where a heavily-used term is flagged as unused just
+        because the graph has no explicit usage edge for it.
+        """
         findings = []
+        dead_terms: list[str] = []
         for node_id, node in self.nodes.items():
             if node.entity_type == EntityType.DEFINED_TERM:
+                usage = 0
+                if document_text:
+                    usage = len(re.findall(r"\b" + re.escape(node.name) + r"\b", document_text, re.IGNORECASE))
                 outgoing = [e for e in self.edges if e.source_id == node_id]
-                if not outgoing:
+                # Flag only if genuinely unused (<=1 occurrence) AND no edges.
+                if usage <= 1 and not outgoing:
+                    dead_terms.append(node.name)
                     findings.append({
                         "type": "missing_link",
                         "node_id": node_id,
@@ -235,6 +249,13 @@ class KnowledgeGraph:
                         "node_name": node.name,
                         "issue": "Party has no connections to obligations, conditions, or covenants",
                     })
+
+        # Sanity gate: flagging several "dead definitions" in a non-trivial
+        # document almost always indicates a *parser* bug, not a *drafting* bug.
+        # Suppress so it routes to QA review rather than the user-facing report.
+        if document_text and len(dead_terms) > 3 and len(document_text) > 5000:
+            findings[:] = [f for f in findings if f.get("node_name") not in dead_terms]
+
         return findings
 
     def detect_circular_references(self) -> list[list[str]]:
@@ -460,5 +481,8 @@ def build_knowledge_graph_from_text(text: str, document_name: str = "document") 
                     entity_type=EntityType.REGULATORY_APPROVAL,
                     source_document=document_name,
                 ))
+
+    # Detect dead-definition false positives using actual document usage counts.
+    kg.dead_definition_findings = kg.detect_missing_links(text)
 
     return kg

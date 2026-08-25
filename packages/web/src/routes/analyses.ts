@@ -40,6 +40,7 @@ import {
   renderLitigation,
   type DocInput,
 } from "../lib/analysis-modules.js";
+import { runQaGuardrail, renderQaGuardrail } from "../lib/qa-guardrails.js";
 import { authMiddleware, requireAuth } from "../middleware/auth.js";
 import { getQuotaUsage, incrementAnalysisUsage } from "../lib/quota.js";
 import { userMeta } from "../database/schema.js";
@@ -691,6 +692,25 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
     }).catch(() => {});
   } catch (err) {
     console.warn("[SANITY GATE] Could not run final reliability gate:", err);
+  }
+
+  // ── Deterministic QA guardrail (mechanical prompt-compliance checks) ────────
+  try {
+    const qa = runQaGuardrail(contractText, reportMarkdown);
+    await writeAudit({
+      action: "qa_guardrail",
+      resourceType: "analysis",
+      resourceId: id,
+      metadata: { issues: qa.issues.length, items: qa.issues },
+    }).catch(() => {});
+    if (qa.issues.length) {
+      console.warn(`[QA GUARDRAIL] ${qa.issues.length} advisory issue(s) on analysis ${id}:`);
+      for (const i of qa.issues) console.warn(`  - ${i}`);
+    }
+    const qaMd = renderQaGuardrail(qa.issues);
+    if (qaMd) reportMarkdown += "\n\n" + qaMd;
+  } catch (err) {
+    console.warn("[QA GUARDRAIL] Could not run QA guardrail:", err);
   }
 
   await db.update(schema.analyses).set({

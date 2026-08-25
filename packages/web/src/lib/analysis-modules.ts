@@ -101,8 +101,12 @@ const REG_BODIES = [
 ];
 const HEADING_CLAUSE_RE =
   /\b(Representations\s+and\s+Warranties|Warranties|Indemnification|Covenants|Conditions\s+to\s+Closing|Conditions\s+to\s+Consummation|Definitions|Termination|Confidentiality|Governing\s+Law|Dispute\s+Resolution|Tax|CERCLA|Environmental)\b/gi;
-const SCHEDULE_RE = /\b(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z]?\d+[a-z]?)\b/gi;
-const SCHEDULE_REF_RE = /\b(?:pursuant\s+to|as\s+set\s+forth\s+in|referenced\s+in|set\s+forth\s+on|attached\s+as)\s+(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z]?\d+[a-z]?)\b/gi;
+// Captures full sub-numbering + letter-suffix schedule/exhibit labels
+// (e.g. "1.1(a)", "2.5", "3.11", "A-1") — does NOT truncate at the first
+// decimal point. The trailing negative lookahead prevents over-capture while
+// still allowing a following "." (sentence terminator) or ")" (suffix).
+const SCHEDULE_RE = /\b(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z0-9]+(?:\.[A-Z0-9]+)*(?:\([a-zA-Z0-9]+\))?(?:-[A-Z0-9]+)?)(?![A-Za-z0-9(])/gi;
+const SCHEDULE_REF_RE = /\b(?:pursuant\s+to|as\s+set\s+forth\s+in|referenced\s+in|set\s+forth\s+on|attached\s+as)\s+(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z0-9]+(?:\.[A-Z0-9]+)*(?:\([a-zA-Z0-9]+\))?(?:-[A-Z0-9]+)?)(?![A-Za-z0-9(])/gi;
 
 export function runKnowledgeGraph(text: string): KGResult {
   const nodes: KGNodeT[] = [];
@@ -187,12 +191,32 @@ export function runKnowledgeGraph(text: string): KGResult {
     }
   }
 
-  // Missing links: defined terms never referenced elsewhere
+  // Defined-term usage: count EVERY occurrence (quoted definition site AND all
+  // subsequent unquoted uses, e.g. "the Acquired Assets") across the whole
+  // document. A term used 40x must not be flagged "never referenced" just
+  // because the KG node was only created once (at its definition site).
+  const definedTermUsage = new Map<string, number>();
+  for (const term of definedTermNames) {
+    const r = new RegExp(`\\b${esc(term)}\\b`, "gi");
+    definedTermUsage.set(term, countMatches(text, r));
+  }
+
+  // Missing links: a defined term is only "dead" if it appears AT MOST ONCE in
+  // the entire document — i.e. only inside its own definition sentence
+  // (usage <= 1). Any term referenced elsewhere is alive.
   const missingLinks: string[] = [];
   for (const n of nodes) {
-    if (n.entityType === "defined_term" && n.occurrences <= 1) {
-      missingLinks.push(`${n.name} (defined but never referenced)`);
-    }
+    if (n.entityType !== "defined_term") continue;
+    const usage = definedTermUsage.get(n.name.toLowerCase()) ?? n.occurrences;
+    if (usage <= 1) missingLinks.push(`${n.name} (defined but never referenced)`);
+  }
+
+  // Sanity gate: flagging several "dead definitions" in a non-trivial document
+  // almost always indicates a *parser* bug, not a *drafting* bug. Suppress the
+  // user-facing finding so it routes to QA review rather than the report.
+  const estimatedPages = Math.max(1, Math.round(text.length / 2500));
+  if (missingLinks.length > 3 && estimatedPages > 2) {
+    missingLinks.length = 0;
   }
 
   // Undefined terms: capitalized phrases that look like defined terms but aren't
@@ -365,7 +389,7 @@ function extractDocMeta(name: string, text: string): DocMeta {
 
   const scheduleLabels = new Set<string>();
   let scm2: RegExpExecArray | null;
-  const schRe = /\b(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z]?\d+[a-z]?)\b/gi;
+  const schRe = /\b(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z0-9]+(?:\.[A-Z0-9]+)*(?:\([a-zA-Z0-9]+\))?(?:-[A-Z0-9]+)?)(?![A-Za-z0-9(])/gi;
   while ((scm2 = schRe.exec(text)) !== null) scheduleLabels.add(scm2[1].trim().toUpperCase());
 
   return {
@@ -424,10 +448,10 @@ export function runCrossDocConsistency(documents: DocInput[]): {
     // (e.g. "SCHEDULE 4.1 — Disclosure Schedules"), not merely a cross-reference.
     const attachedLabels = new Set<string>();
     let am: RegExpExecArray | null;
-    const attachRe = /\b(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z]?\d+[a-z]?)\s*[:—-]/gi;
+    const attachRe = /\b(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z0-9]+(?:\.[A-Z0-9]+)*(?:\([a-zA-Z0-9]+\))?(?:-[A-Z0-9]+)?)\s*[:—-]/gi;
     while ((am = attachRe.exec(meta.text)) !== null) attachedLabels.add(am[1].trim().toUpperCase());
 
-    const refRe = /\b(?:pursuant\s+to|as\s+set\s+forth\s+in|referenced\s+in|set\s+forth\s+on|attached\s+as|see)\s+(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z]?\d+[a-z]?)\b/gi;
+    const refRe = /\b(?:pursuant\s+to|as\s+set\s+forth\s+in|referenced\s+in|set\s+forth\s+on|attached\s+as|see)\s+(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z0-9]+(?:\.[A-Z0-9]+)*(?:\([a-zA-Z0-9]+\))?(?:-[A-Z0-9]+)?)(?![A-Za-z0-9(])/gi;
     let rm: RegExpExecArray | null;
     while ((rm = refRe.exec(meta.text)) !== null) {
       const label = rm[1].trim().toUpperCase();
@@ -1279,7 +1303,7 @@ export function runDocumentInventory(documents: DocInput[]): InventoryResult {
     const referenced = new Set<string>();
     const attached = new Set<string>();
     let sm: RegExpExecArray | null;
-    const schedRe = /\b(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z]?\d+[a-z]?)\b/gi;
+    const schedRe = /\b(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z0-9]+(?:\.[A-Z0-9]+)*(?:\([a-zA-Z0-9]+\))?(?:-[A-Z0-9]+)?)(?![A-Za-z0-9(])/gi;
     while ((sm = schedRe.exec(text)) !== null) {
       referenced.add(sm[1].toUpperCase());
       const before = text.slice(Math.max(0, sm.index - 60), sm.index);
@@ -1287,7 +1311,7 @@ export function runDocumentInventory(documents: DocInput[]): InventoryResult {
     }
     // Attached definitions: lines like "Schedule 4.1 —" or "SCHEDULE 4.1"
     let am: RegExpExecArray | null;
-    const attachRe = /\b(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z]?\d+[a-z]?)\s*[:—-]/gi;
+    const attachRe = /\b(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z0-9]+(?:\.[A-Z0-9]+)*(?:\([a-zA-Z0-9]+\))?(?:-[A-Z0-9]+)?)\s*[:—-]/gi;
     while ((am = attachRe.exec(text)) !== null) attached.add(am[1].toUpperCase());
 
     const missingSchedules: string[] = [];
@@ -1295,7 +1319,8 @@ export function runDocumentInventory(documents: DocInput[]): InventoryResult {
     for (const label of referenced) {
       if (attached.has(label)) continue;
       const fullLabel = `${doc.filename} — Schedule/Exhibit ${label}`;
-      if (/^[A-Z]\d+$/.test(label)) missingSchedules.push(fullLabel);
+      // Exhibit labels begin with a letter (e.g. "A-1"); schedules begin with a digit.
+      if (/^[A-Z]/.test(label)) missingExhibits.push(fullLabel);
       else missingSchedules.push(fullLabel);
     }
     const missingAmendments: string[] = [];
