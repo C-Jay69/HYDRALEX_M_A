@@ -30,7 +30,13 @@ export interface QaGuardrailResult {
 }
 
 function extractGeneralGoverningLaw(text: string): string {
-  const m = text.match(/laws\s+of\s+(?:the\s+State\s+of\s+)?([A-Za-z]+)/i);
+  // Prefer the dedicated "Governing Law" clause if one exists, so a stray
+  // "laws of the State of X" buried in a recital doesn't mislead the check.
+  const govSection = text.match(
+    /governing\s+law\.?([\s\S]{0,900}?)(?=\n\s*\d+\.\d+\s+[A-Z]|\n[A-Z][a-z]{3,}:\s*$|\n\s*$)/i
+  );
+  const haystack = govSection ? govSection[1] : text;
+  const m = haystack.match(/laws\s+of\s+(?:the\s+State\s+of\s+)?([A-Za-z]+)/i);
   return m ? m[1].toLowerCase() : "unknown";
 }
 
@@ -67,15 +73,27 @@ export function runQaGuardrail(contractText: string, reportMarkdown: string): Qa
     );
   }
 
-  // 4. Schedule-reference truncation
-  if (/Schedule 1(?![.\d])/.test(reportMarkdown) && /Schedule 1\.\d/.test(contractText)) {
-    issues.push(
-      `Possible schedule truncation: report says "Schedule 1" but the contract uses detailed Schedule 1.x references (e.g. 1.1(a)). Preserve full sub-numbering.`
-    );
+  // 4. Schedule / Exhibit reference truncation — generalized to ANY base number
+  //    (the old check only caught "Schedule 1" and "Schedule 3").
+  const seen = new Set<string>();
+  const schedRe = /\b(Schedule|Exhibit)\s+(\d+)(?![.\d(a-zA-Z)])/gi;
+  let sm: RegExpExecArray | null;
+  const truncated: string[] = [];
+  while ((sm = schedRe.exec(reportMarkdown)) !== null) {
+    const label = sm[1];
+    const num = sm[2];
+    if (seen.has(`${label} ${num}`)) continue;
+    seen.add(`${label} ${num}`);
+    const hasDetail = new RegExp(`\\b${label}\\s+${num}\\.\\d`, "i").test(contractText);
+    const hasLetter = new RegExp(`\\b${label}\\s+${num}\\(\\w\\)`, "i").test(contractText);
+    if (hasDetail || hasLetter) truncated.push(`${label} ${num}`);
   }
-  if (/Schedule 3(?![.\d])/.test(reportMarkdown) && /Schedule 3\.\d/.test(contractText)) {
+  if (truncated.length) {
     issues.push(
-      `Possible schedule truncation: report says "Schedule 3" but the contract uses detailed Schedule 3.x references. Preserve full sub-numbering.`
+      `Possible schedule/exhibit truncation: the report references "${truncated.join(
+        '", "'
+      )}" without sub-numbering, but the contract uses detailed sub-references ` +
+        `(e.g. "${truncated[0]}.1(a)"). Preserve full schedule/exhibit sub-numbering.`
     );
   }
 

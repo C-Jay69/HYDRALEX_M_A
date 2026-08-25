@@ -107,8 +107,8 @@ class HydraforgeAnalysisPipeline:
 
     def _run_regulatory_analysis(self, text: str) -> List[RegulatoryFinding]:
         """Run regulatory analysis using the regulatory module"""
-        # Use the segmentation method to identify applicable frameworks
-        result = self.regulatory_module._build_segmentation_according_to_the_regulatory_and_geographical_extent_of_questions_as_follows_(text)
+        # Identify applicable regulatory frameworks
+        result = self.regulatory_module.analyze_regulatory_landscape(text)
         findings = []
 
         for reg in result.get("applicable_regulations", []):
