@@ -1672,6 +1672,109 @@ F. SPECIAL RULE PATCH — ASSET PURCHASE AGREEMENTS
    asset deals without public-company/securities facts.
 9. Export-control risk from aerospace/manufacturing is a diligence issue unless
    text shows ITAR/EAR/DDTC facts — phrase as potential, requiring confirmation.
-10. Placeholder text such as "[Identical to Clean Contract]" is a drafting
-    incompleteness issue, NOT a normal cross-reference.
+ 10. Placeholder text such as "[Identical to Clean Contract]" is a drafting
+     incompleteness issue, NOT a normal cross-reference.
   If any check fails, correct before finalizing.
+
+───────────────────────────────────────────────────────────────────────────────
+APPENDIX 3 — SPECIALIZED CLAUSE COVERAGE (best-in-class addendum)
+──────────────────────────────────────────────────────────────────────────────
+The following clauses are routinely MISSED by generic analyzers and are required
+for a top-tier M&A review. For each, state PRESENCE/ABSENCE, DRAFTING QUALITY,
+PARTY FAVORED, and (if absent but expected for the deal type) the missing-protection
+risk. Cite exact clause text, never paraphrase the operative number.
+
+SAND-01 — Sandbagging (Pre-Closing Knowledge)
+  - PRO-sandbagging: Buyer MAY bring a claim even if the matter was disclosed in the
+    disclosure schedules or otherwise known pre-closing. Favors Buyer. If present,
+    note it overrides the disclosure-schedule defense for Seller.
+  - ANTI-sandbagging: Buyer is barred from claiming a breach it knew/should have known
+    pre-closing (or that was scheduled). Favors Seller. Flag if it also swallows
+    fraud/title claims (should be carved out).
+  - If neither stated, flag as AMBIGUOUS — default rules vary by jurisdiction (e.g.
+    Delaware §259/UDCC vs NY), so absence is a real gap, not "standard."
+
+KNOW-01 — Knowledge Qualifier Classification
+  Distinguish the THREE forms; they change rep-and-warranty scope materially:
+  - INDIVIDUAL knowledge: only the actual knowledge of a named person/role.
+  - COLLECTIVE / "to the knowledge of the Company": actual knowledge of specified
+    officers (typically CEO, CFO, GC) — must be exercised through reasonable inquiry.
+  - CONSTRUCTIVE ("knows or should have known" / "after due inquiry"): broadest,
+    included matters reasonably discoverable. Flag when a "fundamental" rep (title,
+    authority, tax, ownership) is qualified only by INDIVIDUAL knowledge — that is a
+    buyer-favorable over-narrowing Seller should resist. State which form each key rep
+    uses; do not lump them.
+
+EFF-01 — Efforts Standards
+  Grade the standard and its direction:
+  - "best efforts" > "commercially reasonable efforts" > "reasonable efforts" > "good
+    faith efforts" > unqualified. Note that "best efforts" in the US often implies
+    spending money; "commercially reasonable" does not.
+  - Critical where it governs: regulatory approvals, financing, HSR/CFIUS cooperation,
+    antitrust divestitures, and covenant compliance. Flag ASYMMETRY (one party "best
+    efforts," the other "commercially reasonable") as a leverage indicator.
+
+TAX-01 — Tax Gross-Up & Tax-Election Mechanics
+  - TAX GROSS-UP: if indemnity is net-of-tax and a gross-up applies (so Seller is made
+    whole on an after-tax basis), confirm the gross-up formula and withholding handler.
+    Missing gross-up on a net indemnity favors the indemnitor.
+  - §338(h)(10) / §336(e) ELECTION: in a stock deal treated as asset sale (or a
+    parent/subsidiary §336(e)), confirm (a) the election is REQUIRED vs optional, (b)
+    who bears the resulting tax (often Seller), (c) the sharing of incremental tax if
+    the election is made without consent, (d) the "incremental tax" definition and
+    gross-up. Flag if the agreement references stock purchase but is silent on the
+    election while facts suggest an asset-step-up benefit to Buyer.
+  - §1060 / ALLOCATION: confirm purchase-price allocation to asset classes (must match
+    between parties); mismatched allocations are an audit red flag.
+
+FIN-01 — Financing Contingency (Closing Condition, not just reverse-break fee)
+  - If Buyer's obligation to close is conditioned on obtaining financing/equity
+    commitment, flag as a BUYER walk right that shifts financing risk onto Seller and
+    can strand the deal. Distinguish: (a) fully contingent (no hell-or-high-water),
+    (b) limited to failure of a committed financing (TLA/equity commitment paper
+    exists), (c) "hell-or-high-water" (must use reasonable best efforts + exhaust
+    permitted financing alternatives). Confirm the commitment papers are actually
+    annexed; an un-annexed financing condition is a hollow protection.
+
+EXP-01 — Expense Reimbursement / Expense Allocation
+  - Determine who bears deal expenses (including advisor, legal, filing fees) on
+    termination. One-sided expense reimbursement (e.g. Seller always pays Buyer's
+    costs on any termination) is a leverage flag. Note interaction with reverse
+    termination fee (does the fee INCLUDE or EXCLUDE expenses?).
+
+MFN-01 — Most-Favored-Nation / Most-Favored-Customer
+  - In a deal context this usually appears in INVESTOR-side documents (tag-along,
+    information rights, redemption) rather than the M&A agreement; if present in the
+    target's commercial contracts being acquired, flag that the acquired entity may owe
+    better terms to third parties post-close — a hidden liability for Buyer. Do not
+    conflate with price-protection in the M&A agreement itself.
+
+COC-01 — Change-of-Control / Anti-Assignment
+  - Any target contract requiring counterparty consent on a change of control or that
+    is non-assignable without consent becomes a CONSENT-CONDITION to closing (and a
+    potential termination right for the counterparty). Flag material ones (key
+    licenses, credit agreements, customer contracts with >X% revenue). This compounds
+    the cross-document consistency check — surface it explicitly as a closing-condition
+    dependency, not just a generic "third-party consent" red flag.
+
+EMP-01 — Employment, Benefits & ERISA
+  - Key-employee retention / management rollover: confirm who stays, vesting
+    acceleration, and 280G / golden-parachute gross-up.
+  - Benefit plans: identify defined-benefit/pension (underfunded liability risk),
+    multi-employer (withdrawal liability), and WARN Act exposure for layoffs at/after
+    close. Flag if R&W on ERISA/employee benefits are absent in a deal with employees.
+  - Non-compete/non-solicit enforceability varies sharply by state (e.g. CA void,
+    others reasonableness-tested) — tie to governing-law.
+
+COMPLETENESS MATRIX — deal type → provisions that MUST be present
+  - ASSET: Excluded Liabilities carve-out; §1060 allocation; bulk-sales / assignment
+    consents; permitted-use of permits. (Missing ⇒ high risk.)
+  - MERGER (statutory): shareholder approval; certificate/articles amendment;
+    appraisal/dissenter rights; 2/3 vote mechanics. (Missing ⇒ invalid deal.)
+  - STOCK: cap-table / equityholder consent; §338(h)(10) election handling;
+    escrow for indemnity. (Missing ⇒ ownership risk.)
+  - CARVE-OUT / SPIN-OFF: Transition Services Agreement (TSA) (IT, HR, facilities);
+    shared-contract separation; interim operating covenants. (Missing TSA ⇒
+    operational cliff at close.)
+  If the detected deal type is missing its required provisions, raise a STRUCTURAL
+  COMPLETENESS gap (not just a negotiation point).

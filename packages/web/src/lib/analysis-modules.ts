@@ -737,7 +737,12 @@ const RED_FLAG_RULES: FlagRule[] = [
   {
     category: "Indemnity Direction Reversal",
     severity: "critical",
-    patterns: [/\bBuyer\s+(?:shall\s+)?indemnif\w*\s+(?:the\s+)?Seller\b/i, /\bindemnif\w*\s+(?:the\s+)?Seller\s+for\s+(?:the\s+)?Seller'?s\b/i],
+    patterns: [
+      /\bBuyer\s+(?:shall\s+)?indemnif\w*\s+(?:the\s+)?Seller\b/i,
+      /\bindemnif\w*\s+(?:the\s+)?Seller\s+for\s+(?:the\s+)?Seller'?s\b/i,
+      /\bSeller\s+(?:shall\s+be\s+)?indemnified\s+by\s+(?:the\s+)?Buyer\b/i,
+      /\bindemnif\w*\s+(?:the\s+)?Seller\s+by\s+(?:the\s+)?Buyer\b/i,
+    ],
   },
   {
     category: "Forced-Close Waiver",
@@ -770,6 +775,69 @@ export function runRedFlagEngine(text: string): { flags: RedFlagT[] } {
       flags.push({ category: rule.category, severity: rule.severity, evidence: rule.absenceNote || "Not detected", location: "contract" });
     }
   }
+  // ── Nuanced presence/absence checks (presence of A but absence of B) ──
+  // These catch structural gaps the simple presence-based rules miss.
+  const hasIndemnity = /\bindemnif/i.test(text);
+  const hasLimit =
+    /\b(?:cap\b|capacit\w*|basket|deductible|threshold|limitation of liability)\b/i.test(text) ||
+    /\bsubject\s+to\s+(?:an?\s+)?(?:cap|basket)\b/i.test(text);
+  if (hasIndemnity && !hasLimit) {
+    flags.push({
+      category: "Indemnification Limitation Missing",
+      severity: "high",
+      evidence: "Indemnification language present but no cap, basket, deductible, or threshold found.",
+      location: "contract",
+    });
+  }
+
+  const isAssetDeal = /\b(?:purchased assets|assumed liabilities|excluded liabilities|asset purchase)\b/i.test(text);
+  const hasExcludedLiab = /\bexcluded\s+liabilit/i.test(text);
+  if (isAssetDeal && !hasExcludedLiab) {
+    flags.push({
+      category: "Broad Liability Assumption",
+      severity: "high",
+      evidence:
+        "Asset purchase with liability assumption but no 'Excluded Liabilities' carve-out found — Buyer may inherit unintended liabilities.",
+      location: "contract",
+    });
+  }
+
+  const hasReps = /\brepresentations\s+and\s+warrant/i.test(text);
+  const hasDisclosureSched = /\bdisclosure\s+schedul/i.test(text);
+  if (hasReps && !hasDisclosureSched) {
+    flags.push({
+      category: "No Disclosure Schedule Mechanism",
+      severity: "moderate",
+      evidence: "Representations & Warranties present but no disclosure-schedule qualification mechanism found.",
+      location: "contract",
+    });
+  }
+
+  const hasExclusiveRemedy = /\bexclusive\s+remedy\b|\bsole\s+remedy\b/i.test(text);
+  const hasFraudCarve =
+    /(?:limitations?|survival|cap).{0,200}fraud/i.test(text) ||
+    /fraud.{0,200}(?:shall not apply|carve-?out|not\s+be\s+(?:subject|limited))/i.test(text);
+  if (hasExclusiveRemedy && !hasFraudCarve) {
+    flags.push({
+      category: "Exclusive Remedy Without Fraud Carve-Out",
+      severity: "high",
+      evidence:
+        "Exclusive/soles-remedy clause present but no fraud carve-out from limitations found — extra-contractual fraud remedies may be trapped.",
+      location: "contract",
+    });
+  }
+
+  const hasClosingCondition = /\bcondition(?:s)?\s+to\s+(?:the\s+)?closing\b/i.test(text);
+  const hasMAE = /\bmaterial\s+adverse\s+eff(?:ect|ects)\b|\bMAE\b/i.test(text);
+  if (hasClosingCondition && !hasMAE) {
+    flags.push({
+      category: "No MAE Closing Condition Defined",
+      severity: "moderate",
+      evidence: "Closing conditions present but no defined Material Adverse Effect (MAE) standard found.",
+      location: "contract",
+    });
+  }
+
   // Highest severity first
   const order: Record<Severity, number> = { critical: 0, high: 1, moderate: 2, low: 3 };
   flags.sort((a, b) => order[a.severity] - order[b.severity]);
@@ -1700,17 +1768,20 @@ export function runNegotiationAnalysis(text: string): NegotiationResult {
     });
   }
 
-  // Leverage scores (0-10 heuristic)
+  // Leverage scores (0-10, graded) — count contributing provisions rather than
+  // a binary 3/7 so multi-provision documents are scored proportionally.
   let buyerLeverage = 3;
   let sellerLeverage = 3;
-  if (findings.some((f) => f.type === "buyer_leverage")) buyerLeverage = 7;
-  if (findings.some((f) => f.type === "seller_leverage")) sellerLeverage = 7;
-  const oneSided = findings.filter((f) => f.type === "one_sided").length;
-  if (oneSided > 0) {
-    const oneSidedEvidence = findings.find((f) => f.type === "one_sided")?.evidence ?? "";
-    if (/buyer/i.test(oneSidedEvidence)) buyerLeverage = Math.max(buyerLeverage, 8);
-    if (/seller/i.test(oneSidedEvidence)) sellerLeverage = Math.max(sellerLeverage, 8);
+  const buyerHits = BUYER_LEVERAGE_PATTERNS.filter((p) => p.test(text)).length;
+  const sellerHits = SELLER_LEVERAGE_PATTERNS.filter((p) => p.test(text)).length;
+  buyerLeverage += Math.min(5, buyerHits * 2);
+  sellerLeverage += Math.min(5, sellerHits * 2);
+  for (const o of findings.filter((f) => f.type === "one_sided")) {
+    if (/buyer/i.test(o.evidence)) buyerLeverage = Math.min(10, buyerLeverage + 1);
+    if (/seller/i.test(o.evidence)) sellerLeverage = Math.min(10, sellerLeverage + 1);
   }
+  // Earnout/EBITDA upside shifts commercial leverage toward Seller.
+  if (/\bearnout\b|\badjusted\s+EBITDA\b/i.test(text)) sellerLeverage = Math.min(10, sellerLeverage + 1);
 
   return { findings, buyerLeverage, sellerLeverage };
 }
