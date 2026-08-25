@@ -40,7 +40,7 @@ import {
   renderLitigation,
   type DocInput,
 } from "../lib/analysis-modules.js";
-import { runQaGuardrail, renderQaGuardrail } from "../lib/qa-guardrails.js";
+import { runQaGuardrail, renderQaGuardrail, stripInternalTags } from "../lib/qa-guardrails.js";
 import { authMiddleware, requireAuth } from "../middleware/auth.js";
 import { getQuotaUsage, incrementAnalysisUsage } from "../lib/quota.js";
 import { userMeta } from "../database/schema.js";
@@ -693,6 +693,12 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
   } catch (err) {
     console.warn("[SANITY GATE] Could not run final reliability gate:", err);
   }
+
+  // ── Strip pipeline-internal annotations before persistence ──────────────────
+  // Removes tags like "FINDING-021", "Agent 1", "true_missed_item", "L3-A",
+  // "RISK-ASIS-...", "★ NEW", and the injected "[RECONCILER] ..." line so they
+  // never reach a client deliverable.
+  reportMarkdown = stripInternalTags(reportMarkdown);
 
   // ── Deterministic QA guardrail (mechanical prompt-compliance checks) ────────
   try {

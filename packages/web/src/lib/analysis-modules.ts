@@ -228,6 +228,13 @@ export function runKnowledgeGraph(text: string): KGResult {
     "Payment", "Price", "Purchase", "Sale", "Assets", "Shares", "Stock", "Equity",
     "Interest", "Obligation", "Obligations", "Rights", "Business", "Operations",
     "Employees", "Affiliates", "Seller", "Buyer", "Target",
+    // Common sentence-initial / header words the capital-phrase heuristic otherwise grabs
+    "There", "Neither", "Where", "When", "While", "Then", "Each", "Both", "All", "Any",
+    "No", "Not", "And", "Or", "But", "For", "With", "Without", "From", "Into", "Upon",
+    "After", "Before", "During", "Until", "Unless", "Except", "Subject", "Notwithstanding",
+    "Overview", "Summary", "Background", "Recitals", "Definitions", "Interpretation",
+    "Preamble", "Witnesseth", "Whereas", "Merger", "An", "By", "To", "In", "On", "At",
+    "As", "Of", "Be", "Is", "Are", "Was", "Were", "They", "We", "You", "Who", "Which",
   ]);
   const undefinedTerms: string[] = [];
   const capRe = /\b([A-Z][a-zA-Z]{2,}(?:\s+[A-Z][a-zA-Z]{2,}){0,3})\b/g;
@@ -236,6 +243,7 @@ export function runKnowledgeGraph(text: string): KGResult {
   while ((cm2 = capRe.exec(text)) !== null) {
     const w = cm2[1].trim();
     const low = w.toLowerCase();
+    if (/^[A-Z0-9\s&/\-]+$/.test(w)) continue; // skip ALL-CAPS headers (e.g. "MERGER AGREEMENT")
     if (seen.has(low) || skip.has(w) || definedTermNames.has(low)) continue;
     seen.add(low);
     if (w.length < 4 || w.length > 40) continue;
@@ -266,6 +274,12 @@ export function renderKnowledgeGraph(kg: KGResult): string {
         .join(", ") +
       "."
   );
+  if (kg.summary.totalEdges === 0) {
+    lines.push(
+      "_No structured relationships were resolved from defined-term or schedule cross-references. " +
+        "This is expected for short or lightly-cross-referenced documents and is not itself a defect._"
+    );
+  }
   lines.push("");
 
   if (kg.missingLinks.length) {

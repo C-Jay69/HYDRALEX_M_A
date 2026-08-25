@@ -113,7 +113,63 @@ export function runQaGuardrail(contractText: string, reportMarkdown: string): Qa
     }
   }
 
+  // 6. Citation validator — every §N / Section N cited must resolve to a section
+  //    that actually exists in the parsed contract. Phantom citations (e.g. §21 in
+  //    a 14-section document, or template residue like "Standard 18-Month Rep
+  //    Survival") destroy client trust and are the easiest class of error to catch.
+  const allowedSections = new Set<number>();
+  const secRe = /(?:^|\n)\s*(?:Section|Article|§)\s*(\d{1,3})\b/g;
+  let secm: RegExpExecArray | null;
+  while ((secm = secRe.exec(contractText)) !== null) allowedSections.add(parseInt(secm[1], 10));
+  if (allowedSections.size >= 3) {
+    const maxSec = Math.max(...allowedSections);
+    const citeRe = /\b(?:Section|§)\s*(\d{1,3})\b/g;
+    const badCites = new Set<number>();
+    let cm2: RegExpExecArray | null;
+    while ((cm2 = citeRe.exec(reportMarkdown)) !== null) {
+      const n = parseInt(cm2[1], 10);
+      if (!allowedSections.has(n)) badCites.add(n);
+    }
+    if (badCites.size) {
+      issues.push(
+        `Citation integrity: the report references section(s) ${[...badCites]
+          .sort((a, b) => a - b)
+          .join(", ")} which do not exist in the parsed contract (highest real section is §${maxSec}). ` +
+          `Validate every §N against the parsed section index before delivery — do not let finding IDs leak into section slots.`
+      );
+    }
+  }
+
   return { issues };
+}
+
+/**
+ * stripInternalTags — code-level sanitizer that removes pipeline-internal
+ * annotations from the client-facing report (e.g. "FINDING-021", "Agent 1",
+ * "true_missed_item", "L3-A", "RISK-ASIS-...", "★ NEW", "[RECONCILER] ...").
+ * These are emitted by the LLM or injected by the reconciler and must never
+ * reach a deliverable. Idempotent and safe to run repeatedly.
+ */
+const INTERNAL_TAG_PATTERNS: RegExp[] = [
+  /\[RECONCILER\][^\n]*/gi,
+  /\[RECONCILER OUTPUT INJECTED[^\]]*\]/gi,
+  /\bFINDING-\d+\b/gi,
+  /\bA1-\d{3}\b/gi,
+  /\btrue_missed_item\b/gi,
+  /\bInvariant\s+\d+/gi,
+  /\bL3-[A-D]\b/gi,
+  /RISK-ASIS-[A-Z-]+/gi,
+  /★\s*NEW/gi,
+  /\bAgent\s*1\b/gi,
+  /\bSpecialist\s*#\s*[12]\b/gi,
+  /\bCRITIC\s*\/\s*RECONCILER\b/gi,
+];
+
+export function stripInternalTags(markdown: string): string {
+  let out = markdown;
+  for (const p of INTERNAL_TAG_PATTERNS) out = out.replace(p, "");
+  out = out.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
+  return out.trim();
 }
 
 export function renderQaGuardrail(issues: string[]): string {
