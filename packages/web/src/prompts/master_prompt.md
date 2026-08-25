@@ -1537,6 +1537,141 @@ G-13. FINAL SELF-CORRECTION & QA SELF-CHECK
    □ Cap/basket applied only to the indemnity subsections the text covers?
    □ Regulatory approvals NOT stated as required without contract evidence?
    □ Contract FACT vs INFERENCE clearly labeled?
-   □ Severity consistent across Executive Summary, Critical Findings, and asymmetry
-     sections (no silent downgrade/upgrade without a one-line reconciliation)?
+  □ Severity consistent across Executive Summary, Critical Findings, and asymmetry
+      sections (no silent downgrade/upgrade without a one-line reconciliation)?
+
+═══════════════════════════════════════════════════════════════════════════════
+APPENDIX — ENHANCEMENT PATCHES (Asset-Scope, Fraud Stack, Report Discipline)
+═══════════════════════════════════════════════════════════════════════════════
+
+These patches close recall/consistency gaps. They are additive to the rules
+above and MUST be applied by every specialist pass and the reconciler.
+
+───────────────────────────────────────────────────────────────────────────────
+B1. CHECKLIST CATEGORY: ASSET & CONSIDERATION SCOPE INTEGRITY (Tier-1, standalone)
+───────────────────────────────────────────────────────────────────────────────
+Apply to the Definitions section and ANY clause defining "Acquired Assets,"
+"Purchased Assets," "Included Assets," "Excluded Assets," or equivalent. Do NOT
+bury this inside "Representations" review — it lives in Definitions/Article I
+and is skipped if the specialist scans indemnity-forward.
+
+For EACH element of the asset/consideration definition, check whether it has been
+NARROWED relative to a reasonable market-standard baseline:
+
+1. Qualifying language on asset scope: Does "used in," "related to," or "part of"
+   get modified by a limiting adverb ("primarily," "exclusively," "solely")?
+   → If yes: flag scope-narrowing; state what falls OUTSIDE the narrowed
+     definition that a reasonable buyer would expect INSIDE it.
+2. AR / inventory cutoffs: Is AR limited by age (e.g. "<90 days"), inventory
+   limited by type/condition, or receivables/payables subject to undisclosed
+   caps? → Flag with dollar-impact estimate if calculable from financials.
+3. IP scope: Is IP limited to "owned by Seller" (excluding licensed-in IP), or to
+   specific IP types (patents only, excluding trade secrets/know-how)?
+   → Flag as critical if the business is technology-/process-dependent.
+4. Goodwill/enterprise-value attachment: Is goodwill tied to "the Acquired Assets"
+   (narrow) rather than "the Business" (broad)? → Flag as valuation/accounting
+   risk (post-closing impairment testing + purchase price allocation).
+5. Excluded Assets creep: Does the Excluded Assets list include items NOT
+   typically excluded — e.g. personnel files, pre-closing claims/rights of
+   recovery, pending litigation recoveries? → Flag each individually with a
+   one-line consequence.
+
+OUTPUT REQUIREMENT: Treat these as a DISTINCT FINDINGS CATEGORY labeled
+"Asset & Consideration Scope Findings." Do NOT fold them into "Purchase Price
+Breakdown" or "Representations" where they are diluted. A buyer's diligence team
+needs a single place to see "what you think you're buying vs. what you're buying."
+
+───────────────────────────────────────────────────────────────────────────────
+B2. FRAUD-REMEDY VIABILITY STACK — MANDATORY THIRD-LEG CHECK
+───────────────────────────────────────────────────────────────────────────────
+Whenever BOTH are present in one agreement:
+  (a) a fraud carve-out from the indemnity cap ("limitations shall not apply to
+       fraud"), AND
+  (b) an exclusive-remedy clause forcing fraud claims into the indemnification
+       process ("indemnification is the exclusive remedy ... including fraud")
+You MUST additionally search Article IV (Buyer Reps) and Article V (Covenants)
+for an ANTI-RELIANCE / NO-RELIANCE clause (e.g. "Buyer relies solely on the
+representations expressly set forth in Article III" / "no representation not
+expressly set forth herein has been made").
+
+This is a THIRD LEG, independent of cap/exclusive-remedy mechanics: an
+anti-reliance clause can independently defeat a fraud claim in many jurisdictions
+(by negating the "reasonable reliance" element) regardless of the indemnity text.
+
+Report all three legs together as ONE compounded finding:
+  Leg 1: Cap/basket limitations nominally excepted for fraud (§X)
+  Leg 2: Exclusive-remedy clause re-traps fraud inside the capped process (§Y)
+  Leg 3: Anti-reliance clause independently negates the reliance element needed
+         to prove fraud (§Z)
+Label "Fraud Claim Triple Lock." Note Leg 3 makes the defect worse than Legs
+1+2 alone: it is an INDEPENDENT bar even if a court strikes the exclusive-remedy
+clause as against public policy.
+
+───────────────────────────────────────────────────────────────────────────────
+B3. CRITIC PASS — MANDATORY CONSISTENCY SWEEP (run after all sections drafted)
+───────────────────────────────────────────────────────────────────────────────
+Build a table of clause-ID → every label assigned to it anywhere in the document
+(Executive Summary, Critical Findings, Asymmetry, IC Memo, etc.). If the SAME
+clause receives materially different severity treatment in different sections
+(e.g. "reasonable" in one place and a cost-escalation risk elsewhere; "Market
+Standard" and "forum bias" in different places), you MUST either:
+  (a) reconcile to a single consistent severity applied everywhere, OR
+  (b) if intentional (e.g. "market standard in isolation, but elevated when
+      combined with Buyer's circumstances"), state the reconciling sentence in
+      BOTH locations.
+Do not silently downgrade a "Critical" finding in fine print, nor upgrade without
+an explicit one-line reconciliation.
+
+───────────────────────────────────────────────────────────────────────────────
+B4. REPORT STRUCTURE — CANONICAL FINDING PRINCIPLE
+───────────────────────────────────────────────────────────────────────────────
+Each distinct defect gets EXACTLY ONE full exposition in Critical Findings (or
+Material Negotiation Points): clause cite, mechanism, cross-reference traps,
+market classification, counter-language. EVERY other section touching that finding
+(Executive Summary, Asymmetry, Interaction-Weighted Stacks, Board Summary, IC
+Memo, Red Flag Engine) references it by short finding-ID + ONE-LINE restatement
+max — never re-derives the full explanation. Exception: the Interaction-Weighted
+Stack may synthesize multiple finding-IDs into NEW analysis (clearly labeled as
+synthesis), still referencing IDs rather than re-explaining each component.
+
+───────────────────────────────────────────────────────────────────────────────
+B5. SCORING OUTPUT — PRECISION DISCIPLINE
+───────────────────────────────────────────────────────────────────────────────
+Any numeric estimate (expected value, cost ranges, score adjustments, probability
+%) must satisfy ONE of:
+  1. SHOW THE FORMULA — if you state "Interaction-Weighted Score: 38 (compressed
+     from 58, -20 points)," show the actual weighting applied (e.g. "Critical=0.6x,
+     High=0.8x…"), not just input/output numbers.
+  2. OR SOFTEN TO ILLUSTRATIVE — if no defensible formula exists, use "as an
+     order-of-magnitude illustration, losses in the low-to-mid six figures are
+     plausible — NOT a probabilistic model, treat directionally only," never
+     "$250K+ unhedged exposure" implied-precision.
+Visually/textually distinguish "stated in contract" (e.g. a fee correctly derived
+from the contract's own stated number) from "analyst estimate / modeled."
+
+───────────────────────────────────────────────────────────────────────────────
+F. SPECIAL RULE PATCH — ASSET PURCHASE AGREEMENTS
+───────────────────────────────────────────────────────────────────────────────
+1. Treat broad assumed-liability catch-alls as high/critical buyer risk. If Buyer
+   assumes liabilities not expressly excluded, flag as reversal of the normal
+   asset-purchase liability default.
+2. Environmental split: if Seller indemnifies only identified environmental
+   liabilities but Buyer indemnifies unidentified ones, flag as environmental
+   indemnity reversal.
+3. Asset-package narrowing must be separately analyzed (used primarily in / owned
+   IP only / AR exclusions / retained claims / excluded personnel records /
+   non-transferable permits) — see B1.
+4. Indemnity limitations mapped by subsection: if basket/cap applies only to R&W
+   claims, do NOT apply it to covenants, taxes, or excluded liabilities unless
+   express.
+5. Fraud: if carved out from limitations but included in exclusive remedy, say
+   exactly that (see B2).
+6. Anti-reliance is material — integrate into fraud/misrepresentation analysis.
+7. Do NOT call preserved materiality qualifiers a "materiality scrape."
+8. Do NOT infer public securities filings (S-4, proxy, SEC approval) in private
+   asset deals without public-company/securities facts.
+9. Export-control risk from aerospace/manufacturing is a diligence issue unless
+   text shows ITAR/EAR/DDTC facts — phrase as potential, requiring confirmation.
+10. Placeholder text such as "[Identical to Clean Contract]" is a drafting
+    incompleteness issue, NOT a normal cross-reference.
   If any check fails, correct before finalizing.

@@ -20,6 +20,7 @@ from cross_document_consistency import analyze_document_consistency, Consistency
 from red_flag_engine import RedFlagEngine, build_red_flag_engine, RiskFinding
 from regulatory_analysis import RegulatoryAnalysisModule, RegulatoryFinding
 from litigation_risk_assessment import LitigationRiskAssessor, LitigationRiskFinding, assess_litigation_risk, get_litigation_summary
+from contract_qa import run_contract_qa
 
 
 @dataclass
@@ -31,6 +32,7 @@ class AnalysisResult:
     regulatory_findings: List[Dict]
     litigation_risks: List[Dict]
     litigation_summary: Dict
+    qa_findings: List[Dict]
     overall_risk_score: float  # 0-100
 
 
@@ -63,6 +65,10 @@ class HydraforgeAnalysisPipeline:
         litigation_risks = self.litigation_assessor.assess(text, self._extract_context(text))
         litigation_summary = get_litigation_summary(litigation_risks)
 
+        # Deterministic QA guardrails (annotation stripping, schedule/term
+        # audits, indemnity/fraud precision, governing-law checks).
+        qa_findings = run_contract_qa(text)
+
         # Calculate overall risk score
         overall_score = self._calculate_overall_risk_score(red_flags, litigation_risks)
 
@@ -73,6 +79,7 @@ class HydraforgeAnalysisPipeline:
             regulatory_findings=[f.__dict__ for f in regulatory_findings],
             litigation_risks=[f.to_dict() for f in litigation_risks],
             litigation_summary=litigation_summary,
+            qa_findings=qa_findings,
             overall_risk_score=overall_score
         )
 
