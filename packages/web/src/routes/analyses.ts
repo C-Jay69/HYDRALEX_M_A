@@ -48,6 +48,10 @@ import {
   renderAppraisalRights,
   runDgclExecutionMechanics,
   renderDgclExecutionMechanics,
+  runFiduciaryDuty,
+  renderFiduciaryDuty,
+  runHsrAntitrust,
+  renderHsrAntitrust,
   type DocInput,
 } from "../lib/analysis-modules.js";
 import { runQaGuardrail, renderQaGuardrail, stripInternalTags, sanitizeTerminology, checkScorecardConsistency } from "../lib/qa-guardrails.js";
@@ -648,6 +652,15 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
     const dgcl = runDgclExecutionMechanics(contractText);
     moduleSections.push(renderDgclExecutionMechanics(dgcl));
     await writeAudit({ action: "dgcl_mechanics", resourceType: "analysis", resourceId: id, metadata: { isMerger: dgcl.isMerger, defects: dgcl.defectsFound.length } }).catch(() => {});
+
+    // ── New structural modules (Review omissions 2 & 4): fiduciary duty + HSR/antitrust ──
+    const fid = runFiduciaryDuty(contractText, dealType);
+    moduleSections.push(renderFiduciaryDuty(fid));
+    await writeAudit({ action: "fiduciary_duty", resourceType: "analysis", resourceId: id, metadata: { isApplicable: fid.isApplicable, riskLevel: fid.riskLevel } }).catch(() => {});
+
+    const hsr = runHsrAntitrust(contractText, dealType);
+    moduleSections.push(renderHsrAntitrust(hsr));
+    await writeAudit({ action: "hsr_antitrust", resourceType: "analysis", resourceId: id, metadata: { isCovered: hsr.isCoveredTransaction, filing: hsr.hsrFilingRequired } }).catch(() => {});
 
     // Stash readiness for Stage 12 score capping.
     pipelineReadiness = readiness;

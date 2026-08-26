@@ -15,6 +15,10 @@ import {
   renderAppraisalRights,
   runDgclExecutionMechanics,
   renderDgclExecutionMechanics,
+  runFiduciaryDuty,
+  renderFiduciaryDuty,
+  runHsrAntitrust,
+  renderHsrAntitrust,
   type DocInput,
 } from "./analysis-modules.js";
 
@@ -169,4 +173,36 @@ test("Appraisal Rights: asset purchase is not applicable", () => {
   const ap = analyzeAppraisalRights("Seller sells all assets to Buyer for $50,000,000.", "ASSET_PURCHASE", "DELAWARE");
   expect(ap.isMerger).toBe(false);
   expect(ap.riskLevel).toBe("NOT_APPLICABLE");
+});
+
+// ── Review omissions 2 & 4: fiduciary duty + HSR/antitrust ───────────────────
+
+test("Fiduciary Duty: STRESS_03 merger lacks board safeguards -> HIGH", () => {
+  const fid = runFiduciaryDuty(STRESS_03, "STATUTORY_MERGER");
+  expect(fid.isApplicable).toBe(true);
+  expect(fid.riskLevel).toBe("HIGH");
+  expect(fid.flags.some((f) => /board recommendation absent/i.test(f))).toBe(true);
+  const rendered = renderFiduciaryDuty(fid);
+  expect(rendered).toContain("FIDUCIARY DUTY ANALYSIS");
+});
+
+test("Fiduciary Duty: non-change-of-control is not applicable", () => {
+  const fid = runFiduciaryDuty("A services agreement between Buyer and Seller.", "SERVICES");
+  expect(fid.isApplicable).toBe(false);
+  expect(fid.riskLevel).toBe("NOT_APPLICABLE");
+});
+
+test("HSR/Antitrust: STRESS_03 below threshold -> NOT_REQUIRED / LOW", () => {
+  const hsr = runHsrAntitrust(STRESS_03, "STATUTORY_MERGER");
+  expect(hsr.isCoveredTransaction).toBe(true);
+  expect(hsr.hsrFilingRequired).toBe("NOT_REQUIRED");
+  expect(hsr.antitrustRiskLevel).toBe("LOW");
+  const rendered = renderHsrAntitrust(hsr);
+  expect(rendered).toContain("HSR / ANTITRUST ANALYSIS");
+});
+
+test("HSR/Antitrust: large merger triggers LIKELY filing", () => {
+  const hsr = runHsrAntitrust("Buyer acquires Target for $200,000,000 in a statutory merger.", "STATUTORY_MERGER");
+  expect(hsr.isCoveredTransaction).toBe(true);
+  expect(hsr.hsrFilingRequired).toBe("LIKELY");
 });
