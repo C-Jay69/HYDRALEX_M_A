@@ -2909,6 +2909,228 @@ export function renderDgclExecutionMechanics(result: DgclMechanicsResult): strin
   return lines.join("\n");
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// MODULE: FIDUCIARY DUTY ANALYSIS  (Review Omission 2)
+//   Boards of target/selling corporations owe fiduciary duties (care, loyalty,
+//   and in change-of-control contexts Revlon/Delaware common-law duties). A deal
+//   that strips or ignores these protections (no board recommendation, no
+//   fiduciary-out, no fairness process) shifts risk onto shareholders.
+// ═════════════════════════════════════════════════════════════════════════════
+
+export type FiduciaryRiskLevel = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "NOT_APPLICABLE";
+
+export interface FiduciaryDutyResult {
+  isApplicable: boolean;
+  riskLevel: FiduciaryRiskLevel;
+  safeguardsDetected: string[];
+  safeguardsMissing: string[];
+  flags: string[];
+  recommendation: string;
+}
+
+function _isFiduciaryDeal(t: string, dealType?: string): boolean {
+  const dt = (dealType || "").toUpperCase();
+  if (dt.includes("SHAREHOLDER") || dt.includes("SELLER") || dt.includes("STOCK")) return true;
+  if (/\bmerger\b/i.test(t) || /\bacquir/i.test(t) || /\bsale\s+of\s+(?:the\s+)?company\b/i.test(t) || /\bsell(?:er|ing)?\s+corporation\b/i.test(t)) return true;
+  return false;
+}
+
+const FIDUCIARY_SIGNALS: [string, RegExp][] = [
+  ["Board of directors identified", /\bboard\s+of\s+directors\b/i],
+  ["Board recommends the transaction", /\bboard\b[^.]{0,60}?(?:unanimously\s+)?recommend(?:s|ed)?\b/i],
+  ["Fiduciary-out / superior-proposal right", /\b(?:fiduciary\s+out|superior\s+proposal|takeover\s+proposal|change\s+in\s+recommendation)\b/i],
+  ["Fairness opinion obtained", /\bfairness\s+opinion\b/i],
+  ["Special committee constituted", /\bspecial\s+committee\b/i],
+  ["Majority-of-minority vote protection", /\bmajority\s+(?:of\s+the\s+)?minority\b/i],
+  ["Affiliate / controller conflict disclosed", /\b(?:affiliate|controlling\s+stockholder|controller)\b/i],
+  ["No-shop / exclusivity with carve-out", /\bno[\s-]shop\b/i],
+];
+
+export function runFiduciaryDuty(text: string, dealType?: string): FiduciaryDutyResult {
+  const isApplicable = _isFiduciaryDeal(text, dealType);
+  if (!isApplicable) {
+    return {
+      isApplicable: false,
+      riskLevel: "NOT_APPLICABLE",
+      safeguardsDetected: [],
+      safeguardsMissing: [],
+      flags: [],
+      recommendation: "Not a change-of-control transaction; fiduciary-duty analysis not applicable.",
+    };
+  }
+
+  const detected = FIDUCIARY_SIGNALS.filter(([, re]) => re.test(text)).map(([label]) => label);
+  const missing: string[] = [];
+  const flags: string[] = [];
+
+  const hasBoardRec = detected.some((d) => d.startsWith("Board recommends"));
+  const hasFidOut = detected.some((d) => d.startsWith("Fiduciary-out"));
+  const hasFairness = detected.some((d) => d.startsWith("Fairness"));
+  const hasSpecial = detected.some((d) => d.startsWith("Special committee"));
+  const hasMotM = detected.some((d) => d.startsWith("Majority-of-minority"));
+  const hasConflict = detected.some((d) => d.startsWith("Affiliate"));
+  const hasNoShop = detected.some((d) => d.startsWith("No-shop"));
+
+  if (!hasBoardRec) {
+    missing.push("Express board recommendation of the transaction");
+    flags.push("Board recommendation absent — shareholders receive no stated fiduciary endorsement.");
+  }
+  if (!hasFidOut) {
+    missing.push("Fiduciary-out / superior-proposal right");
+    flags.push("No fiduciary-out — board cannot terminate to accept a superior proposal (entrenchment risk).");
+  }
+  if (!hasFairness && (hasConflict || hasNoShop)) {
+    missing.push("Fairness opinion");
+    flags.push("No fairness opinion despite deal protections — value fairness unverified.");
+  }
+  if (hasConflict && !(hasSpecial && hasMotM)) {
+    missing.push("MFW protections (special committee + majority-of-minority vote)");
+    flags.push("Controller/affiliate conflict present without MFW safeguards (8 Del. C. §144 / Kahn v. M&F Worldwide).");
+  }
+
+  let riskLevel: FiduciaryRiskLevel = "LOW";
+  if (flags.length >= 3) riskLevel = "CRITICAL";
+  else if (flags.length === 2) riskLevel = "HIGH";
+  else if (flags.length === 1) riskLevel = "MEDIUM";
+
+  const rec = riskLevel === "LOW"
+    ? "Fiduciary safeguards appear adequate for this transaction."
+    : `Elevate fiduciary governance: confirm board authorization (8 Del. C. §141/251(c)), ${missing.join("; ").toLowerCase()}.`;
+
+  return { isApplicable: true, riskLevel, safeguardsDetected: detected, safeguardsMissing: missing, flags, recommendation: rec };
+}
+
+export function renderFiduciaryDuty(result: FiduciaryDutyResult): string {
+  if (!result.isApplicable) return "";
+  const lines: string[] = [];
+  lines.push("### FIDUCIARY DUTY ANALYSIS");
+  lines.push("");
+  lines.push(`**Risk Level:** ${result.riskLevel}`);
+  lines.push("");
+  lines.push("**Safeguards detected:**");
+  lines.push(result.safeguardsDetected.length ? result.safeguardsDetected.map((s) => `- ${s}`).join("\n") : "- (none detected)");
+  lines.push("");
+  lines.push("**Safeguards missing:**");
+  lines.push(result.safeguardsMissing.length ? result.safeguardsMissing.map((s) => `- ${s}`).join("\n") : "- (none missing)");
+  lines.push("");
+  if (result.flags.length) {
+    lines.push("**Flags:**");
+    lines.push(result.flags.map((f) => `- ${f}`).join("\n"));
+    lines.push("");
+  }
+  lines.push(`**Recommendation:** ${result.recommendation}`);
+  lines.push("");
+  return lines.join("\n");
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MODULE: HSR / ANTITRUST  (Review Omission 4)
+//   Determines whether the transaction is a covered HSR Act transaction, whether
+//   the size-of-transaction meets the filing threshold, and the antitrust risk
+//   profile — beyond the reactive framework matcher in runRegulatoryAnalysis.
+// ═════════════════════════════════════════════════════════════════════════════
+
+export type HsrAntitrustRiskLevel = "HIGH" | "MEDIUM" | "LOW" | "INDETERMINATE" | "NOT_APPLICABLE";
+
+export interface HsrAntitrustResult {
+  isCoveredTransaction: boolean;
+  sizeOfTransaction: number | null;
+  hsrFilingRequired: "LIKELY" | "NOT_REQUIRED" | "INDETERMINATE";
+  antitrustRiskLevel: HsrAntitrustRiskLevel;
+  closingConditionsDetected: string[];
+  flags: string[];
+  recommendation: string;
+}
+
+// HSR size-of-transaction threshold is indexed annually (2024 ≈ $119.5M).
+const HSR_SIZE_THRESHOLD = 119_500_000;
+
+function _isCoveredTran(t: string, dealType?: string): boolean {
+  const dt = (dealType || "").toUpperCase();
+  if (dt.includes("ASSET_PURCHASE") || dt.includes("STATUTORY_MERGER") || dt.includes("STOCK_PURCHASE") || dt.includes("MERGER")) return true;
+  if (/\bmerger\b/i.test(t) || /\bacquir/i.test(t) || /\b(?:stock|share)\s+purchase\s+agreement\b/i.test(t) || /\btransfer\s+(?:of\s+)?assets\b/i.test(t)) return true;
+  return false;
+}
+
+function _extractSize(t: string): number | null {
+  const m = t.match(/\$[\d,]+(?:\s*(?:million|M|bn|billion|B))?/i);
+  if (!m) return null;
+  let raw = m[0].replace(/[$,]/g, "").trim().toUpperCase();
+  let value = parseFloat(raw.replace(/[A-Z]/g, ""));
+  if (/\bMILLION\b|\bM\b/.test(m[0].toUpperCase())) value *= 1_000_000;
+  else if (/\bBILLION\b|\bBN\b/.test(m[0].toUpperCase())) value *= 1_000_000_000;
+  return Number.isFinite(value) ? value : null;
+}
+
+export function runHsrAntitrust(text: string, dealType?: string): HsrAntitrustResult {
+  const isCoveredTransaction = _isCoveredTran(text, dealType);
+  if (!isCoveredTransaction) {
+    return {
+      isCoveredTransaction: false,
+      sizeOfTransaction: null,
+      hsrFilingRequired: "NOT_REQUIRED",
+      antitrustRiskLevel: "NOT_APPLICABLE",
+      closingConditionsDetected: [],
+      flags: [],
+      recommendation: "Not a covered acquisition; HSR/antitrust analysis not applicable.",
+    };
+  }
+
+  const size = _extractSize(text);
+  let hsrFilingRequired: HsrAntitrustResult["hsrFilingRequired"] = "INDETERMINATE";
+  if (size == null) hsrFilingRequired = "INDETERMINATE";
+  else if (size >= HSR_SIZE_THRESHOLD) hsrFilingRequired = "LIKELY";
+  else hsrFilingRequired = "NOT_REQUIRED";
+
+  const closingConditionsDetected: string[] = [];
+  if (/\bHSR\b|Hart[- ]Scott[- ]Rodino/i.test(text)) closingConditionsDetected.push("HSR notification referenced");
+  if (/\bwaiting\s+period\b/i.test(text)) closingConditionsDetected.push("HSR waiting-period condition");
+  if (/\bantitrust\s+law/i.test(text)) closingConditionsDetected.push("Antitrust-law compliance condition");
+  if (/\bregulatory\s+approval\b/i.test(text)) closingConditionsDetected.push("Regulatory approval condition");
+
+  // Antitrust risk: horizontal overlap (competitors) is the highest-risk signal.
+  const horizontal = /\bcompet(?:e|itor|ition)\b|\bsame\s+industry\b|\bmarket\s+share\b|\bhorizontal\b/i.test(text);
+  const vertical = /\bvertical\s+integration\b|\bupstream\b|\bdownstream\b|\bsupplier\b/i.test(text);
+  let antitrustRiskLevel: HsrAntitrustRiskLevel = "INDETERMINATE";
+  if (horizontal) antitrustRiskLevel = "HIGH";
+  else if (vertical) antitrustRiskLevel = "MEDIUM";
+  else if (closingConditionsDetected.some((c) => /antitrust|HSR|regulatory/i.test(c))) antitrustRiskLevel = "MEDIUM";
+  else antitrustRiskLevel = "LOW";
+
+  const flags: string[] = [];
+  if (hsrFilingRequired === "LIKELY") flags.push("Transaction size meets/exceeds the HSR threshold (~$119.5M) — pre-merger notification LIKELY required.");
+  else if (hsrFilingRequired === "NOT_REQUIRED") flags.push(`Transaction size (${size != null ? "$" + size.toLocaleString() : "n/a"}) is below the HSR threshold — filing not required at current thresholds.`);
+  else flags.push("Transaction size could not be determined — confirm against the current HSR threshold before closing.");
+  if (antitrustRiskLevel === "HIGH") flags.push("Horizontal competitor overlap indicated — elevated DOJ/FTC second-request risk.");
+
+  const rec = `Verify filing obligation against the current HSR size-of-transaction threshold; ${antitrustRiskLevel === "HIGH" ? "obtain antitrust clearance strategy (DOJ/FTC)" : "antitrust exposure appears manageable"}.`;
+
+  return { isCoveredTransaction: true, sizeOfTransaction: size, hsrFilingRequired, antitrustRiskLevel, closingConditionsDetected, flags, recommendation: rec };
+}
+
+export function renderHsrAntitrust(result: HsrAntitrustResult): string {
+  if (!result.isCoveredTransaction) return "";
+  const lines: string[] = [];
+  lines.push("### HSR / ANTITRUST ANALYSIS");
+  lines.push("");
+  lines.push(`**HSR filing:** ${result.hsrFilingRequired}${result.sizeOfTransaction != null ? ` (size-of-transaction ≈ $${result.sizeOfTransaction.toLocaleString()})` : ""}`);
+  lines.push(`**Antitrust risk:** ${result.antitrustRiskLevel}`);
+  lines.push("");
+  if (result.closingConditionsDetected.length) {
+    lines.push("**Closing conditions detected:**");
+    lines.push(result.closingConditionsDetected.map((c) => `- ${c}`).join("\n"));
+    lines.push("");
+  }
+  if (result.flags.length) {
+    lines.push("**Flags:**");
+    lines.push(result.flags.map((f) => `- ${f}`).join("\n"));
+    lines.push("");
+  }
+  lines.push(`**Recommendation:** ${result.recommendation}`);
+  lines.push("");
+  return lines.join("\n");
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // STRUCTURAL GATE C — EXECUTION READINESS GATE
 // Consolidates the above mechanical blockers plus missing operative exhibits/
