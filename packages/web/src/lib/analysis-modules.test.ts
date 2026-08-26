@@ -10,8 +10,34 @@ import {
   renderRegulatory,
   runLitigationRisk,
   renderLitigation,
+  runPartyIntegrity,
+  analyzeAppraisalRights,
+  renderAppraisalRights,
+  runDgclExecutionMechanics,
+  renderDgclExecutionMechanics,
   type DocInput,
 } from "./analysis-modules.js";
+
+// STRESS_03 — skeleton/DNP merger engineered to expose false-positive traps.
+const STRESS_03 = `
+AGREEMENT AND PLAN OF MERGER
+This Agreement is made between BuyerCo Inc. ("Buyer") and TargetCo Inc. ("Target").
+1. THE MERGER
+Target shall merge with and into Buyer pursuant to Section 251 of the Delaware General Corporation Law, with Buyer continuing as the surviving corporation. At the Effective Time, all liabilities of Target shall vest in the surviving corporation by operation of law.
+2. PURCHASE PRICE
+The total purchase price shall be $50,000,000, payable in cash at Closing.
+3. DUE DILIGENCE
+Buyer accepts the business "as is, where is," and confirms that no further information is required from Target. Buyer waives any recourse for matters discoverable through diligence.
+4. INDEMNIFICATION
+There shall be no indemnification under this Agreement. Buyer accepts all liabilities of Target, known and unknown.
+5. TERMINATION
+Seller may terminate this Agreement at any time prior to Closing for convenience.
+7. GOVERNING LAW
+This Agreement is governed by the laws of the State of Delaware.
+The following standard provisions are not addressed in this Agreement: representations and warranties; defined terms / definitions section; working capital adjustment; Material Adverse Effect; escrow or holdback; survival of claims; schedules and exhibits.
+IN WITNESS WHEREOF, the parties have executed this Agreement.
+Buyer Co: _________________     Target Co: _________________
+`;
 
 const SAMPLE = `
 MERGER AGREEMENT
@@ -98,4 +124,49 @@ test("Litigation Risk assesses all areas", () => {
   expect(lit.areas.some((a) => a.area === "Antitrust Challenges")).toBe(true);
   const rendered = renderLitigation(lit);
   expect(rendered).toContain("### LITIGATION RISK ASSESSMENT");
+});
+
+// ── STRESS_03 regression: the six source-code fixes ─────────────────────────
+
+test("Red Flag: affirmative indemnification waiver not misread as missing mechanics", () => {
+  const rf = runRedFlagEngine(STRESS_03);
+  const cats = rf.flags.map((f) => f.category);
+  expect(cats).toContain("Affirmative Indemnification Waiver");
+  expect(cats).not.toContain("Indemnification Limitation Missing");
+});
+
+test("Red Flag: R&W omission disclosure not misread as missing disclosure schedule", () => {
+  const rf = runRedFlagEngine(STRESS_03);
+  const cats = rf.flags.map((f) => f.category);
+  expect(cats).toContain("Representations & Warranties Absent (Confirmed)");
+  expect(cats).not.toContain("No Disclosure Schedule Mechanism");
+});
+
+test("Party Integrity: signature block present-but-unsigned is not 'missing'", () => {
+  const party = runPartyIntegrity(STRESS_03);
+  expect(party.signatureState).toBe("PRESENT_UNSIGNED");
+  expect(party.findings.some((f) => f.category === "missing_signature_block")).toBe(false);
+  expect(party.findings.some((f) => f.category === "signature_present_unsigned")).toBe(true);
+});
+
+test("Appraisal Rights: DGCL §251 merger yields HIGH risk for STRESS_03", () => {
+  const ap = analyzeAppraisalRights(STRESS_03, "STATUTORY_MERGER", "DELAWARE");
+  expect(ap.isMerger).toBe(true);
+  expect(ap.riskLevel).toBe("HIGH");
+  const rendered = renderAppraisalRights(ap);
+  expect(rendered).toContain("APPRAISAL RIGHTS ANALYSIS");
+});
+
+test("DGCL Mechanics: STRESS_03 merger missing core execution mechanics", () => {
+  const dg = runDgclExecutionMechanics(STRESS_03);
+  expect(dg.isMerger).toBe(true);
+  expect(dg.defectsFound.length).toBeGreaterThanOrEqual(3);
+  const rendered = renderDgclExecutionMechanics(dg);
+  expect(rendered).toContain("DGCL §251 EXECUTION MECHANICS");
+});
+
+test("Appraisal Rights: asset purchase is not applicable", () => {
+  const ap = analyzeAppraisalRights("Seller sells all assets to Buyer for $50,000,000.", "ASSET_PURCHASE", "DELAWARE");
+  expect(ap.isMerger).toBe(false);
+  expect(ap.riskLevel).toBe("NOT_APPLICABLE");
 });

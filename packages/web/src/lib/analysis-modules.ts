@@ -842,11 +842,31 @@ export function runRedFlagEngine(text: string): { flags: RedFlagT[] } {
   }
   // ── Nuanced presence/absence checks (presence of A but absence of B) ──
   // These catch structural gaps the simple presence-based rules miss.
+  // Fix 2 (port): distinguish an AFFIRMATIVE WAIVER ("There shall be no
+  // indemnification") from a present clause missing mechanics. A bare
+  // "indemnification" keyword match must NOT be treated as a present clause.
+  const AFFIRMATIVE_WAIVER_RES = [
+    /there\s+shall\s+be\s+no\s+indemnif(?:ication|ity)/i,
+    /no\s+indemnif(?:ication|ity)\s+(?:shall\s+)?(?:be\s+)?(?:provided|available|exist)/i,
+    /(?:buyer|seller|(?:either|any)\s+party)\s+(?:waives?|hereby\s+waives?)\s+(?:any|all)\s+(?:right\s+to\s+)?indemnif(?:ication|ity)/i,
+    /indemnif(?:ication|ity)\s+(?:is\s+)?(?:expressly\s+)?(?:waived|excluded|disclaimed)/i,
+    /no\s+party\s+shall\s+(?:be\s+)?(?:entitled\s+to|have\s+any)\s+indemnif(?:ication|ity)/i,
+    /(?:expressly|hereby)\s+excludes?\s+(?:any|all)\s+indemnif(?:ication|ity)/i,
+  ];
+  const hasAffirmativeWaiver = AFFIRMATIVE_WAIVER_RES.some((re) => re.test(text));
   const hasIndemnity = /\bindemnif/i.test(text);
   const hasLimit =
     /\b(?:cap\b|capacit\w*|basket|deductible|threshold|limitation of liability)\b/i.test(text) ||
     /\bsubject\s+to\s+(?:an?\s+)?(?:cap|basket)\b/i.test(text);
-  if (hasIndemnity && !hasLimit) {
+  if (hasAffirmativeWaiver) {
+    // Affirmative elimination — NOT a missing-mechanic gap. Critical allocation risk.
+    flags.push({
+      category: "Affirmative Indemnification Waiver",
+      severity: "critical",
+      evidence: "Agreement expressly eliminates indemnification (e.g. 'There shall be no indemnification'). This is an engineered risk transfer, not a clause with missing cap/basket/survival. Buyer has zero contractual indemnification recourse.",
+      location: "contract",
+    });
+  } else if (hasIndemnity && !hasLimit) {
     flags.push({
       category: "Indemnification Limitation Missing",
       severity: "high",
@@ -867,9 +887,30 @@ export function runRedFlagEngine(text: string): { flags: RedFlagT[] } {
     });
   }
 
+  // Fix 3 (port): distinguish OPERATIVE R&W from a document DISCLOSING that R&W
+  // are absent (e.g. an omission list: "representations and warranties [not
+  // addressed]"). A keyword match on "representations and warranties" in the
+  // document's own omission-disclosure must NOT be treated as a present clause.
+  const RW_OMISSION_RES = [
+    /(?:following\s+)?standard\s+provisions?\s+are\s+not\s+addressed[\s\S]*?representations?\s+and\s+warranties?/i,
+    /representations?\s+and\s+warranties?\s*[;,]?\s*(?:are\s+)?(?:not\s+(?:included|addressed|contained|provided)|(?:have\s+been\s+)?(?:omitted|excluded|intentionally\s+left\s+blank))/i,
+    /(?:no|without|absent)\s+representations?\s+and\s+warranties?/i,
+    /this\s+agreement\s+(?:does\s+not\s+(?:contain|include)|contains?\s+no)\s+representations?\s+and\s+warranties?/i,
+    /(?:seller|target|company)\s+makes?\s+no\s+representations?\s*(?:or\s+warranties?|and\s+warranties?)/i,
+    /(?:as[\s-]is|where[\s-]is|with\s+all\s+faults?)\s*(?:and\s+without\s+(?:any\s+)?(?:representation|warranty|covenant))?/i,
+  ];
+  const hasRwOmissionDisclosure = RW_OMISSION_RES.some((re) => re.test(text));
   const hasReps = /\brepresentations\s+and\s+warrant/i.test(text);
   const hasDisclosureSched = /\bdisclosure\s+schedul/i.test(text);
-  if (hasReps && !hasDisclosureSched) {
+  if (hasRwOmissionDisclosure) {
+    // Confirmed absence — not a missing disclosure-schedule gap.
+    flags.push({
+      category: "Representations & Warranties Absent (Confirmed)",
+      severity: "critical",
+      evidence: "Agreement affirmatively discloses that representations and warranties are not included. This is a confirmed absence, not a present clause missing a disclosure-schedule mechanism. Disclosure-schedule gap analysis is suppressed.",
+      location: "contract",
+    });
+  } else if (hasReps && !hasDisclosureSched) {
     flags.push({
       category: "No Disclosure Schedule Mechanism",
       severity: "moderate",
@@ -2272,10 +2313,12 @@ export function detectEscrowSurvivalMismatch(text: string): EscrowSurvivalMismat
 
 export interface PartyIntegrityFinding {
   severity: Severity;
-  category: "ghost_obligor" | "vanishing_indemnitor" | "role_undefined" | "signature_mismatch" | "missing_signature_block" | "unbound_restricted_persons";
+  category: "ghost_obligor" | "vanishing_indemnitor" | "role_undefined" | "signature_mismatch" | "missing_signature_block" | "signature_present_unsigned" | "unbound_restricted_persons";
   description: string;
   evidence: string;
 }
+
+export type SignatureState = "NOT_PRESENT" | "PRESENT_UNSIGNED" | "PRESENT_EXECUTED";
 
 export interface PartyIntegrityResult {
   findings: PartyIntegrityFinding[];
@@ -2283,6 +2326,8 @@ export interface PartyIntegrityResult {
   signatories: string[];
   /** True when the deal is a statutory merger (Target survives/merges). */
   isMerger: boolean;
+  /** Three-state signature classification (Fix 1). */
+  signatureState: SignatureState;
 }
 
 const ROLE_DEF_PAREN_RE = /\b([A-Z][\w&.',-]*(?:\s+[A-Z][\w&.',-]*){0,4}?)\s*\(\s*["'“”‘’]([A-Za-z][A-Za-z ]{1,40})["'“”‘’]\s*\)/g;
@@ -2378,14 +2423,42 @@ export function runPartyIntegrity(text: string, dealType?: string): PartyIntegri
     }
   }
 
-  // 4) Signature mismatch: a defined/preamble party is expected to sign but no signature block names any party
-  const hasSigBlock = signatories.size > 0;
-  if (definedParties.size > 0 && !hasSigBlock) {
+  // 4) Signature-block state: three cases, NOT two.
+  //    NOT_PRESENT   → drafting defect (no block at all)
+  //    PRESENT_UNSIGNED → execution gap (block exists, lines blank)
+  //    PRESENT_EXECUTED  → executed
+  // The naive "no signature block" finding previously conflated
+  // PRESENT_UNSIGNED with NOT_PRESENT (see external review Error 1).
+  const sigArea = text.slice(Math.floor(text.length * 0.7));
+  const hasSigBlockStructural =
+    /\bIN\s+WITNESS\s+WHEREOF\b/i.test(text) ||
+    /(?:AGREED|ACCEPTED|EXECUTED|SIGNED)\s*(?:AND\s+AGREED)?\s*(?:BY|:)/i.test(text) ||
+    /(?:Signature|Sign(?:ed)?\s+by|Authorized\s+Signatory)\s*[:\-_]+/i.test(text) ||
+    /(?:Buyer|Seller|Target|Company|Acquir\w+|Surviving)\s*(?:Co\.?|Corp\.?|Inc\.?|LLC\.?|LP\.?)?\s*:\s*[_\-]{2,}/i.test(text) ||
+    /\[\s*(?:SIGNATURE|NAME|DATE|TITLE|TO\s+BE\s+(?:SIGNED|COMPLETED|INSERTED))\s*\]/i.test(text);
+  const sigExecuted =
+    /\/s\/\s+\w+/.test(sigArea) ||
+    /(?:Name|Title)\s*:\s*[A-Za-z][A-Za-z\s.,]{3,}/.test(sigArea) ||
+    /(?:DocuSign(?:ed)?|AdobeSign(?:ed)?|Electronically\s+Signed)/i.test(sigArea) ||
+    /Date\s*:\s*(?:\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\w+\s+\d{1,2},?\s*\d{4})/.test(sigArea) ||
+    /\[(?:SIGNED|EXECUTED|SIGNATURE\s+ON\s+FILE)\]/i.test(sigArea);
+  let signatureState: SignatureState = "NOT_PRESENT";
+  if (hasSigBlockStructural) {
+    signatureState = sigExecuted ? "PRESENT_EXECUTED" : "PRESENT_UNSIGNED";
+  }
+  if (signatureState === "NOT_PRESENT" && definedParties.size > 0) {
     findings.push({
       severity: "high",
       category: "missing_signature_block",
       description: "Parties are identified but the document contains no signature block / execution clause capturing authorized signatories. The agreement is not executed as drafted.",
       evidence: `Identified parties: ${[...definedParties].join(", ")}`,
+    });
+  } else if (signatureState === "PRESENT_UNSIGNED") {
+    findings.push({
+      severity: "moderate",
+      category: "signature_present_unsigned",
+      description: "A signature block / execution clause exists (e.g. 'IN WITNESS WHEREOF' or signature lines) but the signature lines are blank — the agreement is prepared for execution but is not yet binding. This is an execution-status gap, not a drafting defect (no block at all).",
+      evidence: "Signature block detected; signature lines blank (no executed signatory, date, or /s/ marker).",
     });
   }
   // Externally-referenced signatory (e.g. "Buyer Co") that is not a defined party
@@ -2412,7 +2485,7 @@ export function runPartyIntegrity(text: string, dealType?: string): PartyIntegri
     });
   }
 
-  return { findings, definedParties: [...definedParties], signatories: [...signatories], isMerger };
+  return { findings, definedParties: [...definedParties], signatories: [...signatories], isMerger, signatureState };
 }
 
 function isRoleBound(role: string, definedParties: Set<string>, text: string): boolean {
@@ -2445,6 +2518,13 @@ export function renderPartyIntegrity(result: PartyIntegrityResult): string {
   const lines: string[] = [];
   lines.push("### PARTY, OBLIGOR & SIGNATURE INTEGRITY");
   lines.push("");
+  const sigLabel: Record<SignatureState, string> = {
+    NOT_PRESENT: "❌ FAIL — No signature block exists (drafting defect)",
+    PRESENT_UNSIGNED: "⚠️ PENDING — Signature block present, agreement not yet executed",
+    PRESENT_EXECUTED: "✅ PASS — Agreement executed",
+  };
+  lines.push(`**Signature Block Status:** ${sigLabel[result.signatureState]}`);
+  lines.push("");
   if (!result.findings.length) {
     lines.push("_All referenced obligors are defined parties and signature blocks are consistent._");
     lines.push("");
@@ -2454,6 +2534,377 @@ export function renderPartyIntegrity(result: PartyIntegrityResult): string {
     lines.push(`- **${f.category.replace(/_/g, " ")}** (${f.severity.toUpperCase()}): ${f.description}`);
     if (f.evidence) lines.push(`  - Evidence: ${f.evidence.slice(0, 180)}`);
   }
+  lines.push("");
+  return lines.join("\n");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FIX 4 (port): APPRAISAL RIGHTS ANALYZER (DGCL §262)
+// Previously missing entirely from merger deal-type analysis.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type AppraisalRiskLevel = "HIGH" | "MEDIUM" | "LOW" | "NOT_APPLICABLE";
+
+export interface AppraisalRightsResult {
+  dealType: string;
+  isMerger: boolean;
+  riskLevel: AppraisalRiskLevel;
+  findingTitle: string;
+  findingDetail: string;
+  legalFramework: string;
+  riskFactors: string[];
+  mitigantsDetected: string[];
+  missingProtections: string[];
+  recommendation: string;
+  economicExposure: string;
+}
+
+const APPRAISAL_MERGER_INDICATORS = [
+  /\b(?:statutory\s+)?merger\b/i,
+  /\b(?:Section|§)\s*251\s+(?:of\s+(?:the\s+)?)?(?:Delaware|DGCL)\b/i,
+  /\bDGCL\s*§?\s*251\b/i,
+  /\bsurviving\s+(?:corporation|entity|company)\b/i,
+  /\b(?:merge[drs]?\s+(?:with\s+and\s+into|into)|merging\s+(?:with|into))\b/i,
+  /\b(?:merger\s+consideration|merger\s+agreement|plan\s+of\s+merger)\b/i,
+];
+
+const APPRAISAL_PROTECTION_PATTERNS = [
+  /\bappraisal\s+(?:rights?|actions?|proceedings?|remedies?)\b/i,
+  /\bmarket[-\s]out\s+exception\b/i,
+  /\b(?:Section|§)\s*253\s+(?:of\s+(?:the\s+)?)?(?:Delaware|DGCL)\b/i,
+  /\bshort[\s-]form\s+merger\b/i,
+  /\bfairness\s+opinion\b/i,
+  /\b(?:shareholder|stockholder)\s+(?:vote|approval|consent|meeting)\b/i,
+  /\b(?:board\s+of\s+directors?|board)\s+(?:resolution|approval|recommendation)\b/i,
+];
+
+const APPRAISAL_RISK_FACTOR_PATTERNS: [string, RegExp][] = [
+  ["No representations and warranties — target shareholders cannot assess fair value", /\b(?:no|not\s+addressed|omitted|absent)\s+representations?\s+and\s+warranties?/i],
+  ["Fixed cash price with no working capital adjustment — price may not reflect fair value", /\$[\d,]+\s*(?:million|M)?.*payable\s+in\s+cash\s+at\s+closing(?![\s\S]*working\s+capital)/i],
+  ["No fairness opinion referenced — no independent valuation support", /(?![\s\S]*fairness\s+opinion)[\s\S]*surviving\s+corporation/i],
+  ["Seller convenience termination right — suggests price may not reflect full value", /\b(?:seller|target)\s+may\s+terminate\b[\s\S]{0,80}\b(?:at\s+any\s+time|for\s+convenience)\b/i],
+  ["As-is acceptance — buyer waiving diligence recourse suggests information asymmetry", /\b(?:as[\s-]is|where[\s-]is)\b/i],
+];
+
+function detectMergerStructure(text: string): boolean {
+  return APPRAISAL_MERGER_INDICATORS.some((re) => re.test(text));
+}
+
+export function analyzeAppraisalRights(
+  text: string,
+  dealType = "UNKNOWN",
+  jurisdiction = "DELAWARE",
+): AppraisalRightsResult {
+  const isMerger =
+    detectMergerStructure(text) ||
+    /MERGER/.test(dealType.toUpperCase()) ||
+    /STATUTORY MERGER/.test(dealType.toUpperCase());
+
+  if (!isMerger) {
+    return {
+      dealType,
+      isMerger: false,
+      riskLevel: "NOT_APPLICABLE",
+      findingTitle: "Appraisal Rights — Not Applicable (Non-Merger Structure)",
+      findingDetail:
+        "This transaction does not appear to be structured as a statutory merger. Appraisal rights under DGCL §262 are specific to merger transactions. Asset purchases and stock purchases do not trigger appraisal rights under Delaware law.",
+      legalFramework: "N/A — Non-merger structure",
+      riskFactors: [],
+      mitigantsDetected: [],
+      missingProtections: [],
+      recommendation: "No appraisal rights analysis required for non-merger structures.",
+      economicExposure: "N/A",
+    };
+  }
+
+  const mitigantsDetected: string[] = [];
+  for (const re of APPRAISAL_PROTECTION_PATTERNS) {
+    const m = text.match(re);
+    if (m) mitigantsDetected.push(m[0].slice(0, 80).trim());
+  }
+
+  const riskFactors: string[] = [];
+  for (const [, re] of APPRAISAL_RISK_FACTOR_PATTERNS) {
+    if (re.test(text)) {
+      const label = APPRAISAL_RISK_FACTOR_PATTERNS.find(([, r]) => r === re)?.[0] ?? "Appraisal risk factor";
+      riskFactors.push(label);
+    }
+  }
+
+  const protectionChecks: [string, RegExp][] = [
+    ["Appraisal rights disclosure to shareholders", /\bappraisal\s+rights?\b/i],
+    ["Fairness opinion", /\bfairness\s+opinion\b/i],
+    ["Shareholder vote/approval mechanism", /\b(?:shareholder|stockholder)\s+(?:vote|approval)\b/i],
+    ["Board approval and recommendation", /\bboard\s+(?:of\s+directors?)?\s+(?:approval|recommendation)\b/i],
+    ["Plan of Merger (required for DGCL §251)", /\bplan\s+of\s+merger\b/i],
+    ["Appraisal rights waiver or market-out", /\b(?:appraisal\s+(?:waiver|rights?\s+waived)|market[\s-]out)\b/i],
+  ];
+  const missingProtections: string[] = [];
+  for (const [name, re] of protectionChecks) {
+    if (!re.test(text)) missingProtections.push(name);
+  }
+
+  let riskLevel: AppraisalRiskLevel;
+  if (riskFactors.length >= 3 && mitigantsDetected.length === 0) riskLevel = "HIGH";
+  else if (riskFactors.length >= 2 || missingProtections.length >= 4) riskLevel = "MEDIUM";
+  else if (missingProtections.length >= 2) riskLevel = "MEDIUM";
+  else riskLevel = "LOW";
+
+  const jurisdictionLaw: Record<string, string> = {
+    DELAWARE: "DGCL §262",
+    CALIFORNIA: "Cal. Corp. Code §1300 et seq.",
+    "NEW YORK": "BCL §623",
+  };
+  const law = jurisdictionLaw[jurisdiction.toUpperCase()] ?? "Applicable State Law";
+  const riskLabel: Record<AppraisalRiskLevel, string> = {
+    HIGH: "🔴 HIGH",
+    MEDIUM: "🟠 MEDIUM",
+    LOW: "🟢 LOW",
+    NOT_APPLICABLE: "N/A",
+  };
+
+  let detail = `This is a statutory merger under ${law}. Dissenting shareholders of Target have the right to seek judicial appraisal of the 'fair value' of their shares. Risk Level: ${riskLabel[riskLevel]}.\n\n`;
+  detail += `Risk Factors Identified (${riskFactors.length}):\n`;
+  for (const rf of riskFactors) detail += `  • ${rf}\n`;
+  if (mitigantsDetected.length) {
+    detail += `\nMitigants Detected (${mitigantsDetected.length}):\n`;
+    for (const m of mitigantsDetected) detail += `  • ${m}\n`;
+  } else {
+    detail += "\nNo appraisal risk mitigants detected.\n";
+  }
+  if (missingProtections.length) {
+    detail += `\nMissing Protections (${missingProtections.length}):\n`;
+    for (const mp of missingProtections) detail += `  • ${mp}\n`;
+  }
+
+  return {
+    dealType,
+    isMerger: true,
+    riskLevel,
+    findingTitle: `Appraisal Rights Exposure — ${riskLabel[riskLevel]} (${law} Statutory Merger)`,
+    findingDetail: detail,
+    legalFramework: `${law}: Dissenting shareholders of Target may seek judicial appraisal of 'fair value' of their shares. Fair value is determined without applying a minority discount. If judicially determined fair value exceeds the merger consideration, Buyer (as surviving corporation) must pay the difference plus statutory interest (5% over the Federal Reserve discount rate under DGCL §262(h)). Appraisal actions must be filed within 120 days of the Effective Time. The 'market out' exception (DGCL §262(b)(1)) may eliminate appraisal rights if Target's shares are listed on a national exchange — verify.`,
+    riskFactors,
+    mitigantsDetected,
+    missingProtections,
+    recommendation:
+      "1. Determine whether market-out exception applies (DGCL §262(b)(1) — shares listed on national exchange). 2. Obtain fairness opinion to support merger consideration as fair value. 3. Ensure Plan of Merger includes required appraisal rights notice to shareholders (DGCL §262(d)). 4. Consider appraisal rights waiver mechanism if market-out unavailable. 5. Budget for potential appraisal claims in deal economics. 6. Confirm board approval and recommendation documentation (required for DGCL §251 merger).",
+    economicExposure: estimateAppraisalExposure(text, riskLevel),
+  };
+}
+
+function estimateAppraisalExposure(text: string, riskLevel: AppraisalRiskLevel): string {
+  const priceMatch = text.match(/\$\s*([\d,]+(?:\.\d+)?)\s*(?:million|M\b)?/i);
+  let basePrice: number | null = null;
+  if (priceMatch) {
+    const raw = priceMatch[1].replace(/,/g, "");
+    const n = parseFloat(raw);
+    if (!Number.isNaN(n)) {
+      basePrice = n < 1000 ? n * 1_000_000 : n;
+    }
+  }
+  if (!basePrice) {
+    return "Cannot estimate — purchase price not determinable from contract text. Appraisal exposure is the difference between fair value (judicially determined) and merger consideration, plus statutory interest.";
+  }
+  const mult: Record<AppraisalRiskLevel, [number, number]> = {
+    HIGH: [0.1, 0.3],
+    MEDIUM: [0.05, 0.15],
+    LOW: [0.01, 0.05],
+    NOT_APPLICABLE: [0, 0],
+  };
+  const [lo, hi] = mult[riskLevel];
+  return `Estimated appraisal exposure: $${(basePrice * lo).toLocaleString()}–$${(basePrice * hi).toLocaleString()} (${lo * 100}–${hi * 100}% of $${basePrice.toLocaleString()} merger consideration), plus statutory interest (5% over Federal Reserve discount rate under DGCL §262(h)). Actual exposure depends on percentage of dissenting shareholders and judicially determined fair value, which may exceed merger consideration.`;
+}
+
+export function renderAppraisalRights(result: AppraisalRightsResult): string {
+  if (!result.isMerger) return "";
+  const lines: string[] = [];
+  lines.push("### APPRAISAL RIGHTS ANALYSIS (DGCL §262)");
+  lines.push("");
+  lines.push(`**Risk Level:** ${result.riskLevel}`);
+  lines.push(`**Legal Framework:** ${result.legalFramework}`);
+  lines.push("");
+  lines.push(result.findingDetail.trimEnd());
+  lines.push("");
+  lines.push(`**Economic Exposure:** ${result.economicExposure}`);
+  lines.push("");
+  lines.push(`**Recommendation:** ${result.recommendation}`);
+  lines.push("");
+  lines.push("⚠️ HUMAN REVIEW REQUIRED — Appraisal rights exposure depends on shareholder composition, share listing status (market-out exception), and judicially determined fair value. Confirm with Delaware M&A counsel.");
+  lines.push("");
+  return lines.join("\n");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FIX 5 (port): DGCL §251 EXECUTION MECHANICS CHECKER
+// Checks merger agreements for Effective Time, Certificate of Merger filing,
+// Board approval, and Plan of Merger. Previously missing.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface DgclDefect {
+  defect: string;
+  severity: "HIGH" | "MEDIUM";
+  legalBasis: string;
+  consequence: string;
+  fix: string;
+}
+
+export interface DgclMechanicsResult {
+  isMerger: boolean;
+  effectiveTimeDefined: boolean;
+  certificateFilingAddressed: boolean;
+  boardApprovalAddressed: boolean;
+  planOfMergerReferenced: boolean;
+  planOfMergerAttached: boolean;
+  defectsFound: DgclDefect[];
+  severity: Severity;
+  findingTitle: string;
+  findingDetail: string;
+  recommendation: string;
+}
+
+const DGCL_EFFECTIVE_TIME_PATTERNS = [
+  /"Effective\s+Time"\s*(?:means?|shall\s+mean|is\s+defined)/i,
+  /"Effective\s+Time"\s+(?:shall\s+be|means?)/i,
+  /Effective\s+Time.*?(?:Certificate\s+of\s+Merger|filing)/i,
+  /(?:shall\s+become|becomes?)\s+effective\s+(?:upon|when|at\s+the\s+time)/i,
+];
+const DGCL_CERT_FILING_PATTERNS = [
+  /\bCertificate\s+of\s+Merger\b/i,
+  /file\s+(?:or\s+cause\s+to\s+be\s+filed)?\s+(?:a\s+)?(?:Certificate|Articles)\s+of\s+Merger/i,
+  /Delaware\s+Secretary\s+of\s+State[\s\S]{0,40}?filing/i,
+  /filing\s+(?:of\s+(?:a|the)\s+)?Certificate\s+of\s+Merger/i,
+  /\bDGCL\s*§?\s*251\s*\(c\)/i,
+];
+const DGCL_BOARD_APPROVAL_PATTERNS = [
+  /\b(?:Board\s+of\s+Directors?|Board)\s+(?:has\s+)?(?:approved|adopted|authorized)/i,
+  /\b(?:duly\s+)?authorized\s+(?:and\s+approved\s+)?by\s+(?:the\s+)?Board/i,
+  /\b(?:Board|Directors?)\s+(?:Resolution|Approval|Consent)/i,
+  /\b(?:written\s+consent|unanimous\s+written\s+consent)\s+of\s+(?:the\s+)?(?:Board|Directors?)/i,
+];
+const DGCL_PLAN_REF_PATTERNS = [
+  /\bPlan\s+of\s+Merger\b/i,
+  /(?:Exhibit|Schedule|Annex)\s+[A-Z\d]+\s*[:\-]?\s*Plan\s+of\s+Merger/i,
+  /plan\s+of\s+merger\s+(?:attached|incorporated|annexed)/i,
+];
+const DGCL_PLAN_ATTACHED_PATTERNS = [
+  /(?:attached\s+hereto|incorporated\s+(?:herein|by\s+reference))\s+as\s+(?:Exhibit|Schedule|Annex)\s+[A-Z\d]+/i,
+  /Plan\s+of\s+Merger[\s\S]{0,60}?(?:attached|annexed|incorporated)/i,
+];
+
+export function runDgclExecutionMechanics(text: string): DgclMechanicsResult {
+  const isMerger = /\b(?:statutory\s+)?merger\b|DGCL\s*§?\s*251|surviving\s+corporation/i.test(text);
+  if (!isMerger) {
+    return {
+      isMerger: false,
+      effectiveTimeDefined: false,
+      certificateFilingAddressed: false,
+      boardApprovalAddressed: false,
+      planOfMergerReferenced: false,
+      planOfMergerAttached: false,
+      defectsFound: [],
+      severity: "low",
+      findingTitle: "DGCL §251 Mechanics Check — Not Applicable (Non-Merger)",
+      findingDetail: "Transaction is not a statutory merger. DGCL §251 not applicable.",
+      recommendation: "N/A",
+    };
+  }
+
+  const effectiveTimeDefined = DGCL_EFFECTIVE_TIME_PATTERNS.some((re) => re.test(text));
+  const certificateFilingAddressed = DGCL_CERT_FILING_PATTERNS.some((re) => re.test(text));
+  const boardApprovalAddressed = DGCL_BOARD_APPROVAL_PATTERNS.some((re) => re.test(text));
+  const planOfMergerReferenced = DGCL_PLAN_REF_PATTERNS.some((re) => re.test(text));
+  const planOfMergerAttached = DGCL_PLAN_ATTACHED_PATTERNS.some((re) => re.test(text));
+
+  const defectsFound: DgclDefect[] = [];
+  if (!effectiveTimeDefined) {
+    defectsFound.push({
+      defect: "Effective Time undefined",
+      severity: "HIGH",
+      legalBasis: "DGCL §251(c) requires merger to become effective upon filing of Certificate of Merger",
+      consequence: "Without a defined Effective Time, there is no agreed moment at which the merger becomes legally effective. Economic closing (cash transfer) may occur without legal effectiveness of the merger.",
+      fix: 'Add definition: \'"Effective Time" means the time at which the Certificate of Merger is duly filed with the Secretary of State of Delaware (or such later time as may be specified in the Certificate of Merger as permitted by the DGCL).\'',
+    });
+  }
+  if (!certificateFilingAddressed) {
+    defectsFound.push({
+      defect: "Certificate of Merger filing obligation absent",
+      severity: "HIGH",
+      legalBasis: "DGCL §251(c) — merger effective only upon filing of Certificate of Merger",
+      consequence: "Neither party is contractually obligated to file the Certificate of Merger. If cash transfers at closing but no Certificate is filed, the merger is not legally consummated and Target continues to exist as a separate legal entity.",
+      fix: "Add covenant: 'As promptly as practicable after the Closing, Buyer shall file, or cause to be filed, a Certificate of Merger with the Secretary of State of the State of Delaware in accordance with DGCL §251(c).'",
+    });
+  }
+  if (!boardApprovalAddressed) {
+    defectsFound.push({
+      defect: "Board approval documentation absent",
+      severity: "MEDIUM",
+      legalBasis: "DGCL §251(b) requires Board of Directors to adopt and approve the merger agreement",
+      consequence: "Without documented board approval, the merger agreement may be unenforceable against the corporation, and officers signing may lack authority.",
+      fix: "Add closing condition requiring Seller's Board resolutions approving the Agreement, delivered to Buyer, and an officer certificate confirming board approval.",
+    });
+  }
+  if (!planOfMergerReferenced) {
+    defectsFound.push({
+      defect: "Plan of Merger not referenced",
+      severity: "HIGH",
+      legalBasis: "DGCL §251(b) requires the merger agreement to include, or incorporate by reference, a plan of merger",
+      consequence: "DGCL §251(b) requires the merger agreement to set forth names of constituent/ surviving corporations, terms, share conversion, and certificate amendments. Without a Plan of Merger, the Agreement may not satisfy §251(b).",
+      fix: "Attach a Plan of Merger as Exhibit A addressing all DGCL §251(b) requirements.",
+    });
+  } else if (!planOfMergerAttached) {
+    defectsFound.push({
+      defect: "Plan of Merger referenced but not attached",
+      severity: "HIGH",
+      legalBasis: "DGCL §251(b) — Plan of Merger must be complete and adopted by Board",
+      consequence: "An unattached Plan of Merger cannot be adopted by the Board, approved by shareholders, or filed with the Certificate of Merger. Closing cannot occur without the complete Plan.",
+      fix: "Attach complete Plan of Merger as a named Exhibit; ensure adopted by Board resolution and referenced in Certificate of Merger filing.",
+    });
+  }
+
+  let severity: Severity = "low";
+  if (defectsFound.some((d) => d.severity === "HIGH")) severity = "high";
+  else if (defectsFound.length) severity = "moderate";
+
+  let findingDetail: string;
+  let recommendation: string;
+  if (!defectsFound.length) {
+    findingDetail =
+      "All required DGCL §251 execution mechanics detected: Effective Time defined, Certificate of Merger filing addressed, Board approval documented, Plan of Merger referenced and attached.";
+    recommendation = "Confirm board resolutions adopted before closing and Certificate of Merger filed promptly after closing.";
+  } else {
+    findingDetail = `DGCL §251 Execution Mechanics Analysis: ${defectsFound.length} defect(s) found.\n\nDefects:\n` +
+      defectsFound.map((d) => `  [${d.severity}] ${d.defect}: ${d.consequence.slice(0, 150)}...`).join("\n");
+    recommendation = `Required fixes (${defectsFound.length}):\n` +
+      defectsFound.map((d) => `  • ${d.fix.slice(0, 150)}...`).join("\n") +
+      "\n\nThese are statutory requirements for a valid DGCL §251 merger. Failure to address them may render the merger invalid regardless of the parties' intent.";
+  }
+
+  return {
+    isMerger: true,
+    effectiveTimeDefined,
+    certificateFilingAddressed,
+    boardApprovalAddressed,
+    planOfMergerReferenced,
+    planOfMergerAttached,
+    defectsFound,
+    severity,
+    findingTitle: `DGCL §251 Execution Mechanics — ${defectsFound.length ? `${defectsFound.length} Defect(s) Found` : "PASS"}`,
+    findingDetail,
+    recommendation,
+  };
+}
+
+export function renderDgclExecutionMechanics(result: DgclMechanicsResult): string {
+  if (!result.isMerger) return "";
+  const lines: string[] = [];
+  lines.push("### DGCL §251 EXECUTION MECHANICS");
+  lines.push("");
+  lines.push(`**Status:** ${result.findingTitle}`);
+  lines.push("");
+  lines.push(result.findingDetail.trimEnd());
+  lines.push("");
+  lines.push(`**Recommendation:** ${result.recommendation}`);
   lines.push("");
   return lines.join("\n");
 }

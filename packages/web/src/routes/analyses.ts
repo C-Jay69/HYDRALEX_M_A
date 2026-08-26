@@ -44,6 +44,10 @@ import {
   detectEscrowSurvivalMismatch,
   runReadinessGate,
   renderReadinessGate,
+  analyzeAppraisalRights,
+  renderAppraisalRights,
+  runDgclExecutionMechanics,
+  renderDgclExecutionMechanics,
   type DocInput,
 } from "../lib/analysis-modules.js";
 import { runQaGuardrail, renderQaGuardrail, stripInternalTags, sanitizeTerminology, checkScorecardConsistency } from "../lib/qa-guardrails.js";
@@ -635,6 +639,15 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
     moduleSections.push(renderLitigation(lit));
     moduleSections.push(renderKnowledgeGraph(kg));
     moduleSections.push(renderRedFlag(rf));
+
+    // ── New structural modules (Fixes 4 & 5): appraisal rights + DGCL §251 ──
+    const appraisal = analyzeAppraisalRights(contractText, dealType, "DELAWARE");
+    moduleSections.push(renderAppraisalRights(appraisal));
+    await writeAudit({ action: "appraisal_rights", resourceType: "analysis", resourceId: id, metadata: { isMerger: appraisal.isMerger, riskLevel: appraisal.riskLevel } }).catch(() => {});
+
+    const dgcl = runDgclExecutionMechanics(contractText);
+    moduleSections.push(renderDgclExecutionMechanics(dgcl));
+    await writeAudit({ action: "dgcl_mechanics", resourceType: "analysis", resourceId: id, metadata: { isMerger: dgcl.isMerger, defects: dgcl.defectsFound.length } }).catch(() => {});
 
     // Stash readiness for Stage 12 score capping.
     pipelineReadiness = readiness;
