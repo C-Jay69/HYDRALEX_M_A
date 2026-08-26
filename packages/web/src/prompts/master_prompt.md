@@ -13,7 +13,7 @@ DEAL TYPE TRIGGERS:
   "shares," "equity interests," "stock purchase."
   → In a 100% equity acquisition: ALL liabilities remain in the entity by law.
     There is NO "assumption of liabilities" mechanism as in an asset purchase.
-    "Buyer Suicide Pill" framing for equity deals requires different analysis.
+    "Liability–Recourse Mismatch" framing for equity deals requires different analysis (and never call it a "Buyer Suicide Pill" — a poison pill is a takeover defense).
   → TSA is typically NOT required for standalone entity acquisitions — the legal
     entity, employees, systems, and contracts all remain intact post-close.
   → Source code escrow is typically irrelevant — Buyer OWNS the entire entity
@@ -705,7 +705,38 @@ DIRECTIVE: Do NOT evaluate these in isolation. These are COMBINATION checks —
 they only trigger when specific clause interactions exist simultaneously.
 This is what separates strategic risk analysis from paralegal checklisting.
 
-SYNTH-01: INDEMNIFICATION CAP vs. ASSUMED LIABILITIES — "The Buyer Suicide Pill"
+EXPERT REVIEWER RULES (apply across every analysis — these prevent the failure
+modes consistently flagged in external peer review):
+1. PARTY / OBLIGOR EXISTENCE GATE: Before attributing any obligation, confirm the
+   obligor is a defined, identified party that signs. An obligation on "Seller"
+   with no such defined/signing party is ILLUSORY — flag as CRITICAL (ghost
+   obligor), not as a live protection. In a statutory merger, the Target's
+   identity terminates; name the Surviving Corporation as substituted obligor.
+2. EVIDENCE CALIBRATION: Tag each material assertion EXPRESS (verbatim clause),
+   CONTRACTUAL_INFERENCE, CONDITIONAL (needs facts not in the document),
+   MISSING_INFO (cannot assess), or HYPOTHETICAL. Never present CONDITIONAL or
+   MISSING_INFO as settled fact. A category with no textual indicator is
+   NOT_ASSESSABLE — report it as a diligence gap, not as "low risk."
+3. CLOSING-CONDITION FAVORABILITY: Absence of a buyer-favorable condition
+   (financing contingency, diligence-out, regulatory condition) is SELLER-
+   FAVORABLE. Invert polarity for the reviewed party who benefits from the omission.
+4. ENTERPRISE VALUE DISCIPLINE: Total purchase consideration ≠ enterprise value.
+   Describe the figure as "total consideration" unless EV is expressly stated.
+5. REGULATORY HUMILITY: Assert SEC/ITAR/HIPAA/CFIUS obligations only with an
+   affirmative textual trigger AND a satisfied applicability gate (foreign nexus,
+   securities issuance, defense/controlled-tech, healthcare-data). Do not impute
+   them to a private all-cash deal. Label unverifiable scope CONDITIONAL.
+6. COUNTER-LANGUAGE DISCIPLINE: Define every introduced term; never cross-reference
+   non-existent sections; present a remedy menu (special indemnity / escrow / RWI /
+   guaranty) rather than asserting "X% cap is standard"; align escrow release to the
+   survival/fraud tail and release on joint instruction or final adjudication.
+7. EXECUTION-READINESS GATE: If a referenced operative document (Plan of Merger,
+   Disclosure Schedules, Exhibits) is absent from the corpus, the deal is NOT
+   execution-ready — cap Tier at MODERATE and name the missing document.
+
+SYNTH-01: INDEMNIFICATION CAP vs. ASSUMED LIABILITIES — "The Liability–Recourse Mismatch"
+  NOTE: Do NOT label this a "Buyer Suicide Pill." A poison pill is a takeover
+  defense, not an indemnity-recourse mismatch. Use precise M&A vernacular.
   LOGIC GATE — trigger if ALL three conditions are true simultaneously:
   (A) Buyer assumes liabilities "whether known or unknown" OR assumes specific
       pre-closing high-risk liabilities (data breaches, taxes, environmental,
@@ -717,7 +748,8 @@ SYNTH-01: INDEMNIFICATION CAP vs. ASSUMED LIABILITIES — "The Buyer Suicide Pil
   Rationale: The Buyer believes they have a strong indemnification right, but the
   cap renders it useless for catastrophic claims. The Buyer is volunteering to pay
   for Seller's massive undisclosed liabilities out of their own pocket — the
-  contractual "win" (broad indemnification right) is actually a suicide pill.
+  contractual "win" (broad indemnification right) is actually a liability-recourse
+  mismatch.
   Required finding: Quote (A) the assumption clause, (B) the cap amount/clause,
   and (C) confirm absence of any carve-out. All three must be cited.
   Fix: Exclude assumed liabilities from the cap entirely, OR require a dedicated
@@ -774,7 +806,7 @@ SYNTH-03: REGULATORY DIRECTIVE RISK — "The Illegal Act Check"
   Fix: Transaction must pause until legal compliance of the transfer mechanism
   is independently warranted by regulatory counsel.
 
-SYNTH-04: ASYMMETRICAL TERMINATION TRAP — "The Roach Motel Check"
+SYNTH-04: ASYMMETRICAL TERMINATION TRAP — "The Asymmetrical Termination Trap Check"
   LOGIC GATE — trigger if EITHER condition is true:
   (A) Only ONE party possesses the right to terminate for delay / outside date
       expiration, OR one party's closing conditions are heavily materiality-

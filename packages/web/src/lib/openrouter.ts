@@ -17,7 +17,7 @@ Prioritize findings that:
 • Lock Seller into obligations that extend far beyond reasonable post-closing periods
 • Contain broad indemnification obligations flowing FROM Seller TO Buyer with no practical cap
 • Create non-compete or non-solicitation terms that excessively restrict Seller's future business activity
-• Allow Buyer to terminate but deny Seller equivalent termination rights (Roach Motel from Seller's perspective)
+• Allow Buyer to terminate but deny Seller equivalent termination rights (Asymmetrical Termination Trap from Seller's perspective)
 • Require Seller to provide representations that are impossible to qualify properly due to information asymmetry
 • Expose Seller to Buyer's future misconduct (e.g., Buyer indemnification carve-outs that flow back to Seller)
 
@@ -118,7 +118,7 @@ YOUR SPECIALIZED FOCUS — hunt these with paranoid precision:
 • LIABILITY FLOW REVERSALS: Any clause where Buyer ends up indemnifying Seller for Seller's own pre-closing conduct? (PAIR-01, PAIR-10)
 • BULK SALES: Compliance waived? Who indemnifies creditor liability? (RF-06)
 • EXCLUSIVE REMEDY TRAP: Does §7.5 or Buyer's Independent Investigation clause eliminate recourse? (PAIR-02)
-• BUYER SUICIDE PILL (SYNTH-01): Does Buyer assume broad/unknown liabilities AND face a low indemnification cap with no carve-out? If all three conditions met → CRITICAL.
+• LIABILITY–RECOURSE MISMATCH (SYNTH-01): Does Buyer assume broad/unknown liabilities AND face a low indemnification cap with no carve-out? If all three conditions met → CRITICAL. Do NOT label this a "Buyer Suicide Pill" — a poison pill is a takeover defense, not an indemnity-recourse mismatch. Use precise M&A vernacular.
 • AS-IS / WHERE-IS CLAUSE LOGIC (MANDATORY): If the agreement contains an "As-Is" or "Where-Is" clause AND also explicitly excludes or nullifies the indemnification framework (no cap, no basket, no survival, or affirmative waiver of indemnity), you MUST classify that "As-Is" clause as a LIVE RISK or CRITICAL DEFECT — do NOT list it as an "Overstated Risk" or "False Positive." Rationale: while representations technically provide a breach-of-contract basis, when indemnity is explicitly excluded and due diligence is waived, those representations become structurally unactionable post-closing. Flag the compounding interaction and reflect it in scoring.
 • CROSS-ARTICLE RECONCILIATION: For every potential contradiction you flag, explicitly state whether it is: (a) Real — the provisions genuinely conflict and create risk, (b) Overstated — apparent conflict but mitigated by another clause, or (c) Illusory — provisions actually coexist and no real conflict exists. Do NOT flag a contradiction without this verdict.
 • SURVIVAL CLAUSE GATE (Rule 2): Before classifying non-disparagement or confidentiality obligations as "Illusory" due to termination-for-convenience, check for a Survival clause. If the agreement is a Tier 1 skeleton lacking a survival clause, note: "Pending addition of standard Survival clause, termination for convenience could technically extinguish non-disparagement framework." Do NOT assume termination erases post-closing obligations if standard post-closing survival is implied or customarily expected. Never flag non-disparagement as illusory unless a survival clause is affirmatively absent AND termination language is explicit and unconditional.
@@ -126,6 +126,13 @@ YOUR SPECIALIZED FOCUS — hunt these with paranoid precision:
 • FALSE POSITIVE ELIMINATION: Before flagging any issue as critical, verify: Is this market standard? Is it mitigated elsewhere? Is it offset by a counterbalancing protection? Is it schedule-based and simply missing from excerpt? EXCEPTION: "As-Is" + indemnity nullification stacks always constitute a live risk — do not suppress.
 • DEAL-TYPE ONTOLOGY: Apply STEP 1A deal-type classification FIRST. Do NOT apply asset-purchase logic to equity deals. Do NOT flag source code escrow or TSA absence as material risks in 100% equity acquisitions of standalone entities. Suppression rules from STEP 1A are mandatory.
 • HIPAA INDEMNITY BOMB: In healthcare/SaaS deals — scan for any indemnification obligation covering "actual or alleged" HIPAA, privacy law, or data breach violations post-close. This is among the most dangerous provisions because OCR investigations, class actions, and cyber incidents can create unlimited post-close exposure. If found uncapped → CRITICAL.
+• PARTY / OBLIGOR EXISTENCE GATE (MANDATORY): Before attributing any obligation, confirm the obligor is a defined, identified party that signs. If a clause imposes an obligation on "Seller" (or similar) but no such party is defined or executes the agreement, the obligation is ILLUSORY — flag as a CRITICAL structural defect ("ghost obligor"), not as a live contractual protection. In a statutory merger, the Target's separate identity terminates; an indemnity running to/from a merged-away entity must name the Surviving Corporation as substituted obligor.
+• CLOSING-CONDITION FAVORABILITY (MANDATORY): The absence of a buyer-favorable condition (e.g. no financing contingency, no third-party consent / diligence-out, no regulatory condition) is SELLER-FAVORABLE, not buyer-favorable. Do not characterize a deal lacking these protections as "buyer-favorable on closing conditions." Reverse the polarity when the reviewed party is the one who benefits from the omission.
+• ENTERPRISE VALUE DISCIPLINE: Do NOT equate total purchase consideration with "enterprise value." Enterprise value requires debt, cash, and capital-structure mechanics that are absent from a simple price tag. Describe the figure as "total consideration" unless the agreement expressly states EV.
+• TIER / READINESS GATE: If a referenced operative document (Plan of Merger, Disclosure Schedules, Exhibits) is NOT in the corpus, the deal is NOT execution-ready — cap the Tier at 2 (MODERATE) and state the missing document explicitly. Do not score a deal "execution-ready" when its obligor is undefined or the Plan of Merger is absent.
+• EVIDENCE CALIBRATION: Label every material assertion with its basis — EXPRESS (verbatim clause), CONTRACTUAL_INFERENCE (reasonable reading), CONDITIONAL (depends on facts not in the document), MISSING_INFO (cannot assess from provided text), or HYPOTHETICAL (illustrative). Never present a CONDITIONAL or MISSING_INFO item as a settled fact.
+• COUNTER-LANGUAGE DISCIPLINE: When proposing revisions, (a) define every introduced defined term, (b) do NOT cross-reference section numbers that do not exist in the source, (c) present a remedy menu (special indemnity / escrow / RWI / guaranty) rather than asserting "X% cap is standard," (d) align escrow release to the survival/fraud tail, and (e) provide escrow release on joint instruction or final adjudication, not agent sole discretion.
+• REGULATORY HUMILITY: Only assert a regulatory approval/filing obligation when the agreement contains an affirmative textual trigger AND the applicability gate is satisfied (e.g. SEC filings require a securities-issuance or public-vote indicator; CFIUS requires a foreign-acquirer nexus; EAR/ITAR requires a defense/controlled-technology or cross-border indicator). Do not impute SEC S-4/S-3/DEF 14A, ITAR, or HIPAA obligations to a private all-cash deal with no such indicators. Label unverifiable regulatory scope as a CONDITIONAL diligence question.
 • ARBITRATION ECONOMICS: Do not treat arbitration clauses as boilerplate. Three-arbitrator JAMS/AAA panels in M&A/healthcare disputes cost $500K–$2M+ in arbitration fees alone, take 2-3 years, and materially change indemnity economics — a $500K indemnity claim may be uneconomic to pursue. Flag arbitration structure, cost allocation, and whether it effectively eliminates small-claim indemnity rights.
 • NON-COMPETE JURISDICTION ANALYSIS: Do not call non-competes "reasonable" without jurisdiction analysis. California has near-total ban on non-competes (sale-of-business exception exists but is narrow). Delaware, New York, Florida have different standards. For nationwide scope, multi-year duration, trust/LLC interest sellers → flag enforceability risk with specific state analysis.
 • DILIGENCE-OUT SEVERITY: Post-signing unrestricted due diligence termination rights are extremely unusual in signed M&A transactions and should be classified as 🔴 STRUCTURAL DEFECT / DEAL STRUCTURE PROBLEM, not merely "buyer-favorable." A signed deal with an unrestricted walk-right provides Seller with false deal certainty. Flag the exact trigger language and economic consequence.
@@ -514,7 +521,7 @@ FINAL RELEASE GATE (block client-facing release if any are true):
 
 TONE:
 Use neutral legal-review terminology.
-Avoid loaded rhetoric such as: "roach motel", "catastrophic", "hostile drafting",
+Avoid loaded rhetoric such as: "buyer suicide pill", "roach motel", "catastrophic", "hostile drafting",
 "trap", or "forced-close trap" unless directly quoting the document/user.
 Prefer: "materially buyer-adverse", "unusually restrictive", "significant risk
 allocation", or "potentially below-market".
@@ -710,10 +717,10 @@ FAST-PATH BOILERPLATE TEMPLATE LIBRARY (use verbatim for these standard risk cod
 • GHOST REFERENCES: Any "Identical to Clean Contract 2," missing schedules, or "[to be provided]" → CONTRACT INCOMPLETE.
 • SKELETON CONTRACT FILTER: If large portions are bracketed as placeholder text, flag as INCOMPLETE and unfit for execution.
 • CONTEXTUAL SYNTHESIS (Part F — ALL 4 LOGIC GATES): Run all four combination checks:
-  - SYNTH-01 Buyer Suicide Pill: broad liability assumption + low cap + no carve-out = CRITICAL
+  - SYNTH-01 Liability–Recourse Mismatch: broad liability assumption + low cap + no carve-out = CRITICAL (do NOT call this a "Buyer Suicide Pill")
   - SYNTH-02 Shell Company: no TSA + no employee retention + unverified customer assignment = CRITICAL
   - SYNTH-03 Illegal Act: required transfer + regulatory disclaimer = CRITICAL
-  - SYNTH-04 Roach Motel: asymmetric termination rights, one party locked in = HIGH
+  - SYNTH-04 Asymmetrical Termination Trap: asymmetric termination rights, one party locked in = HIGH (avoid the analyst coinage "Roach Motel")
 
 YOUR JOB: CATCH DRAFTING TRAPS, INCOMPLETENESS, AND CLAUSE INTERACTIONS that a court would resolve against the buyer's counsel.
 
@@ -2807,7 +2814,7 @@ export function validateFinalReport(
   const proposedSellerObligation = /\bSeller shall\b|\bSeller must\b/gi.test(report);
   const sellerDefined =
     definedParties.some((p) => p.toLowerCase() === "seller") ||
-    /[("“]Seller[)"”]/i.test(contractText);
+    /[("“'‘]Seller[)"”'’]/i.test(contractText);
   if (proposedSellerObligation && !sellerDefined) {
     errors.push(
       `Proposed drafting creates obligations for "Seller", but Seller is not a validated defined party.`

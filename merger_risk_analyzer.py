@@ -34,6 +34,7 @@ class AnalysisResult:
     missed_items: List[str]
     must_fix_items: List[Dict]
     adjusted_score_if_fixed: int
+    readiness_blocked: bool = False
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
 
 class MergerRiskAnalyzer:
@@ -88,16 +89,26 @@ class MergerRiskAnalyzer:
         findings.extend(self._check_covenants(document_text))
         findings.extend(self._check_escrow_and_security(document_text))
         findings.extend(self._check_documentation_quality(document_text))
-        
+        findings.extend(self._check_party_integrity(document_text))
+        findings.extend(self._check_indemnification_procedures(document_text))
+        findings.extend(self._check_escrow_survival_mismatch(document_text))
+        findings.extend(self._check_controlling_terms(document_text))
+
         # Calculate raw score
         total_deductions = sum(f.deduction for f in findings)
         raw_score = max(0, self.base_score - total_deductions)
-        
+
         # Apply skeleton leniency (Tier 1 draft adjustment)
         is_skeleton = self._detect_skeleton_draft(document_text)
         skeleton_leniency = self.skeleton_leniency if is_skeleton else 0
         final_score = min(100, raw_score + skeleton_leniency)
-        
+
+        # Execution-readiness gate: ghost obligor / missing operative documents /
+        # undefined controlling terms block execution. Cap the score (mirrors the
+        # TS pipeline's runReadinessGate).
+        readiness_blocked = self._check_readiness_gate(document_text, findings)
+        if readiness_blocked:
+            final_score = min(final_score, 34)
         # Apply interaction weighting
         interaction_stacks = self._apply_interaction_weighting(document_text, findings)
         for stack in interaction_stacks:
@@ -130,7 +141,8 @@ class MergerRiskAnalyzer:
             strengths=strengths,
             missed_items=missed_items,
             must_fix_items=must_fix_items,
-            adjusted_score_if_fixed=adjusted_score
+            adjusted_score_if_fixed=adjusted_score,
+            readiness_blocked=readiness_blocked
         )
     
     # ============================================================
@@ -468,6 +480,154 @@ class MergerRiskAnalyzer:
         
         return findings
     
+    # ─────────────────────────────────────────────────────────────────────────
+    # PARTY / OBLIGOR INTEGRITY (parity with TS runPartyIntegrity)
+    # Catches a named obligor ("Seller shall indemnify…") that is never defined
+    # as a signing party — the single highest-severity defect in peer review.
+    # ─────────────────────────────────────────────────────────────────────────
+    def _check_party_integrity(self, text: str) -> List[RiskFinding]:
+        findings = []
+        # Preamble / definition role bindings:  Acquiror Inc. ('Buyer')  or  "Seller" (Target)
+        defined_parties = set()
+        for m in re.finditer(r"\b([A-Z][\w&.',\- ]{2,40})\s*\(\s*[\"']?([A-Za-z][A-Za-z ]{1,40})[\"']?\s*\)", text):
+            entity, role = m.group(1).strip(), m.group(2).strip()
+            if re.search(r"inc\.?|corp\.?|llc|l\.l\.c\.?|ltd\.?|lp\b|plc|gmbh|s\.a\.?|n\.v\.?|company|co\.?|holdings?|group", entity, re.IGNORECASE):
+                defined_parties.add(role.lower())
+            else:
+                defined_parties.add(entity.lower())
+        for m in re.finditer(r"\b([A-Z][\w&.',\- ]{2,40})\s+(?:means|shall mean|refers to)\s+", text):
+            defined_parties.add(m.group(1).strip().lower())
+
+        obligor_roles = ["seller", "parent", "guarantor", "shareholders?", "stockholders?", "members?"]
+        for role in obligor_roles:
+            rre = re.compile(r"\b" + role + r"\b(?=\s+(?:shall|will|must|agrees?|covenants?|represents?|warrants?|indemnifies?|indemnif(?:y|ies)|undertakes?))", re.IGNORECASE)
+            if not rre.search(text):
+                continue
+            canon = role.rstrip("?")
+            if canon in defined_parties:
+                continue
+            findings.append(RiskFinding(
+                rule="ghost_obligor",
+                deduction=self.config['deductions'].get('party_integrity', {}).get('ghost_obligor', {}).get('deduction', 30),
+                description=(
+                    f"Obligation is imposed on \"{canon.title()}\" but that party is never defined or identified "
+                    f"as a signing party in the provided text. An indemnity running to a non-existent party is illusory."
+                ),
+                severity="critical",
+                suggestion="Define the obligor as a party in the preamble and include it in the signature block, or substitute the Surviving Corporation in a merger."
+            ))
+        return findings
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # INDEMNIFICATION PROCEDURES (notice / defense / settlement consent)
+    # ─────────────────────────────────────────────────────────────────────────
+    def _check_indemnification_procedures(self, text: str) -> List[RiskFinding]:
+        findings = []
+        if not re.search(r"indemnif|hold harmless", text, re.IGNORECASE):
+            return findings
+        has_procedures = (
+            re.search(r"notice\s+of\s+(?:claim|loss|demand)", text, re.IGNORECASE)
+            or re.search(r"\bindemnifying\s+party\b.{0,40}\b(?:defend|control)\b", text, re.IGNORECASE)
+            or re.search(r"consent\s+to\s+settlement", text, re.IGNORECASE)
+            or re.search(r"settlement\b.{0,60}\bconsent\b", text, re.IGNORECASE)
+        )
+        if not has_procedures:
+            findings.append(RiskFinding(
+                rule="indemnification_procedures_missing",
+                deduction=self.config['deductions'].get('party_integrity', {}).get('indemnification_procedures', {}).get('deduction', 15),
+                description="Indemnification is referenced but no notice-of-claim, defense-control, or settlement-consent procedure is specified — recoverability mechanics are undefined.",
+                severity="high",
+                suggestion="Add indemnification claim procedures: notice period, defense/control of third-party claims, and settlement-consent mechanics."
+            ))
+        return findings
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # ESCROW vs SURVIVAL MISMATCH
+    # ─────────────────────────────────────────────────────────────────────────
+    def _parse_months(self, src: str, pattern: str):
+        m = re.search(pattern, src, re.IGNORECASE)
+        if not m:
+            return None
+        if m.group(2) is not None:
+            try:
+                return int(m.group(2))
+            except ValueError:
+                return None
+        word = (m.group(1) or "").lower()
+        table = {"one":1,"two":2,"three":3,"four":4,"five":5,"six":6,"seven":7,"eight":8,"nine":9,"ten":10,"eleven":11,"twelve":12,"eighteen":18,"twenty":20,"thirty":30}
+        return table.get(word)
+
+    def _check_escrow_survival_mismatch(self, text: str) -> List[RiskFinding]:
+        findings = []
+        escrow = self._parse_months(
+            text,
+            r"\bescrow\b[^.]{0,80}?(\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|eighteen|twenty|thirty)\b|(\d{1,2}))\s*[- ]?(?:month|mo)"
+        )
+        survival = self._parse_months(
+            text,
+            r"\b(?:indemnification|survival)[^.]{0,80}?(?:period|survive)[^.]{0,80}?(\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|eighteen|twenty|thirty)\b|(\d{1,2}))\s*[- ]?(?:month|year|yr|mo)"
+        )
+        if escrow is not None and survival is not None and escrow < survival:
+            fraud_unlimited = bool(re.search(r"\bfraud\b[^.]{0,80}?\b(?:no|without)\b[^.]{0,60}\b(?:limitation|cap|survival)\b", text, re.IGNORECASE) or re.search(r"\b(?:no|without)\s+limitation\b[^.]{0,40}?\bfraud\b", text, re.IGNORECASE))
+            findings.append(RiskFinding(
+                rule="escrow_survival_mismatch",
+                deduction=self.config['deductions'].get('party_integrity', {}).get('escrow_survival_mismatch', {}).get('deduction', 20),
+                description=(
+                    f"Indemnity escrow ({escrow} months) releases before the indemnity survival period "
+                    f"({survival} months), leaving post-release claims unrecoverable from the escrow."
+                    + (" Fraud is stated to be unlimited while the escrow is time-limited — align escrow release to the fraud/unlimited tail or add a RWI/guaranty backstop." if fraud_unlimited else "")
+                ),
+                severity="high",
+                suggestion="Extend escrow release to match the longest survival tail (or carve fraud from the escrow release), or add RWI/guaranty backstop."
+            ))
+        return findings
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # UNDEFINED CONTROLLING TERMS
+    # ─────────────────────────────────────────────────────────────────────────
+    def _check_controlling_terms(self, text: str) -> List[RiskFinding]:
+        findings = []
+        controlling = ["Seller", "Purchase Price", "Closing", "Effective Time", "Outside Date",
+                       "Earnout Period", "Fundamental Representations", "Net Working Capital",
+                       "Balance Sheet Date", "Survival Period", "Indemnification"]
+        title_case = {"Closing", "Indemnification", "Purchase Price", "Effective Time", "Outside Date",
+                      "Earnout Period", "Net Working Capital", "Balance Sheet Date", "Survival Period"}
+        defined = set()
+        # "Term" means ...  definitions
+        for m in re.finditer(r"[\"']([A-Z][-&/\w ]{2,50})[\"']\s+(?:means|shall mean|is defined as|refers to|being)", text, re.IGNORECASE):
+            defined.add(m.group(1).strip().lower())
+        # Preamble role bindings:  Acquiror Inc. ('Buyer')
+        for m in re.finditer(r"\b([A-Z][\w&.',\- ]{2,40})\s*\(\s*[\"']?([A-Za-z][A-Za-z ]{1,40})[\"']?\s*\)", text):
+            entity, role = m.group(1).strip(), m.group(2).strip()
+            if re.search(r"inc\.?|corp\.?|llc|l\.l\.c\.?|ltd\.?|lp\b|plc|gmbh|s\.a\.?|n\.v\.?|company|co\.?|holdings?|group", entity, re.IGNORECASE):
+                defined.add(role.lower())
+            else:
+                defined.add(entity.lower())
+        undefined = []
+        for ct in controlling:
+            if ct in title_case or ct.lower() in defined:
+                continue
+            if re.search(r"\b" + re.escape(ct) + r"\b", text, re.IGNORECASE):
+                undefined.append(ct)
+        if undefined:
+            findings.append(RiskFinding(
+                rule="undefined_controlling_terms",
+                deduction=self.config['deductions'].get('party_integrity', {}).get('undefined_controlling_terms', {}).get('deduction', 15),
+                description=f"Controlling defined terms referenced but not defined: {', '.join(undefined)}. The operative text is unenforceable as drafted.",
+                severity="high",
+                suggestion="Add a Definitions article defining each controlling term before relying on the agreement."
+            ))
+        return findings
+
+    def _check_readiness_gate(self, text: str, findings: List[RiskFinding]) -> bool:
+        """Returns True when the deal is NOT execution-ready (score must be capped)."""
+        blockers = [f for f in findings if f.rule in ("ghost_obligor", "undefined_controlling_terms")]
+        # Missing referenced operative documents (Plan of Merger / Disclosure Schedules)
+        refs = set(re.findall(r"\b(?:Plan\s+of\s+Merger|Disclosure\s+Schedules?)\b", text, re.IGNORECASE))
+        missing = [r for r in refs if not re.search(re.escape(r) + r"\b[\s\S]{0,40}[:=]", text, re.IGNORECASE)
+                   and not re.search(re.escape(r) + r"\b[^.]{0,30}\b(?:means|set\s+forth|attached|annexed)", text, re.IGNORECASE)]
+        return bool(blockers) or bool(missing)
+
     def _check_documentation_quality(self, text: str) -> List[RiskFinding]:
         findings = []
         deductions = self.config['deductions']['documentation_quality']
