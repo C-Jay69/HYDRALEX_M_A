@@ -77,6 +77,49 @@ export function getOpenRouterClient() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SAFE COMPLETION WRAPPER
+// ─────────────────────────────────────────────────────────────────────────────
+type CompletionRequest = {
+  model: string;
+  messages: { role: "system" | "user" | "assistant"; content: string }[];
+  temperature?: number;
+};
+
+/**
+ * Calls chat.completions.create and returns the assistant message content.
+ *
+ * The OpenRouter/provider response occasionally arrives as an error-shaped
+ * body (e.g. `{error: {...}}`) with no `choices` — a transient provider
+ * hiccup. The naive `response.choices[0]?.message?.content` then throws a
+ * cryptic "Cannot read properties of undefined (reading '0')" and, because
+ * that is not a 429/5xx, the outer withRetry() does NOT retry it — so a
+ * single flaky response kills the whole pipeline.
+ *
+ * This wrapper: (a) reads choices defensively so it can never throw that
+ * cryptic error, (b) retries a few times on empty/missing content (free
+ * models are flaky), and (c) on persistent failure throws a descriptive
+ * error that includes the actual response body so the cause is visible.
+ */
+async function completeWithContent(
+  client: OpenAI,
+  payload: CompletionRequest,
+  label: string
+): Promise<string> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const res: any = await client.chat.completions.create(payload as any);
+    const content: unknown = res?.choices?.[0]?.message?.content;
+    if (typeof content === "string" && content.trim().length > 0) return content;
+    lastErr = new Error(
+      `${label} returned no usable content (attempt ${attempt}/3). ` +
+        `Response: ${JSON.stringify(res ?? {}).slice(0, 600)}`
+    );
+    if (attempt < 3) await new Promise((r) => setTimeout(r, 4000));
+  }
+  throw lastErr;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MASTER CHECKLIST — injected into all three model prompts
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync } from "fs";
@@ -300,19 +343,20 @@ Detect the industry vertical first. Then systematically apply the full checklist
 
   const _analystStart = Date.now();
   console.log(`[LLM] Analyst (${MODELS.analyst}) — request started (${contractText.length.toLocaleString()} chars contract)`);
-  const response = await client.chat.completions.create({
-    model: MODELS.analyst,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    temperature: 0.2,
-  });
   console.log(`[LLM TIMING] Analyst (${MODELS.analyst}): ${Date.now() - _analystStart}ms`);
 
-  const content = response.choices[0]?.message?.content;
-  if (!content) throw new Error(`Analyst model (${MODELS.analyst}) returned empty response`);
-  return content;
+  return await completeWithContent(
+    client,
+    {
+      model: MODELS.analyst,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.2,
+    },
+    `Analyst (${MODELS.analyst})`
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -602,19 +646,20 @@ Return only the requested structured JSON.`;
 
   const _criticStart = Date.now();
   console.log(`[LLM] Critic (${MODELS.critic}) — request started (${contractText.length.toLocaleString()} chars contract)`);
-  const response = await client.chat.completions.create({
-    model: MODELS.critic,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    temperature: 0.2,
-  });
   console.log(`[LLM TIMING] Critic (${MODELS.critic}): ${Date.now() - _criticStart}ms`);
 
-  const content = response.choices[0]?.message?.content;
-  if (!content) throw new Error(`Critic model (${MODELS.critic}) returned empty response`);
-  return content;
+  return await completeWithContent(
+    client,
+    {
+      model: MODELS.critic,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.2,
+    },
+    `Critic (${MODELS.critic})`
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1366,19 +1411,20 @@ Apply all aggregation rules (L3-A through L3-D) and the RECONCILIATION-DRIVEN SY
 
   const _adjudicatorStart = Date.now();
   console.log(`[LLM] Adjudicator (${MODELS.adjudicator}) — request started (${contractText.length.toLocaleString()} chars contract)`);
-  const response = await client.chat.completions.create({
-    model: MODELS.adjudicator,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    temperature: 0.3,
-  });
   console.log(`[LLM TIMING] Adjudicator (${MODELS.adjudicator}): ${Date.now() - _adjudicatorStart}ms`);
 
-  const content = response.choices[0]?.message?.content;
-  if (!content) throw new Error(`Adjudicator model (${MODELS.adjudicator}) returned empty response`);
-  return content;
+  return await completeWithContent(
+    client,
+    {
+      model: MODELS.adjudicator,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.3,
+    },
+    `Adjudicator (${MODELS.adjudicator})`
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2861,18 +2907,20 @@ IMPORTANT:
 
   const _start = Date.now();
   console.log(`[LLM] Sanity revision (${MODELS.adjudicator}) — request started (${qaErrors.length} QA issue(s))`);
-  const response = await client.chat.completions.create({
-    model: MODELS.adjudicator,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    temperature: 0.1,
-  });
   console.log(`[LLM TIMING] Sanity revision (${MODELS.adjudicator}): ${Date.now() - _start}ms`);
 
-  const content = response.choices[0]?.message?.content;
-  if (!content) throw new Error(`Sanity revision model returned empty response`);
+  const content = await completeWithContent(
+    client,
+    {
+      model: MODELS.adjudicator,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.1,
+    },
+    `Sanity revision (${MODELS.adjudicator})`
+  );
   return stripCodeFences(content);
 }
 
