@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+import os
 import tempfile
 import uuid
 import asyncio
@@ -30,8 +31,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize analyzer
-analyzer = MergerRiskAnalyzer("merger_scoring_config.yaml")
+# Initialize analyzer — config lives with the canonical engine package
+_CANONICAL_CONFIG = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "packages", "python-engine", "merger_scoring_config.yaml"
+)
+analyzer = MergerRiskAnalyzer(_CANONICAL_CONFIG)
 
 # Request/Response Models
 class AnalyzeOptions(BaseModel):

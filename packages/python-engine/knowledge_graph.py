@@ -458,16 +458,29 @@ def build_knowledge_graph_from_text(text: str, document_name: str = "document") 
                     source_section=match.group(0)[:100],
                 ))
 
-    # Extract party names
+    # Extract party names. Normalize so "BuyerCo Inc." / "the Target" collapse
+    # onto a single canonical node keyed to the defined short name (e.g. "Buyer").
+    defined_shorts = set(re.findall(r'\(["\']?([A-Z][A-Za-z]+)["\']?\)', text))
+    seen_party_ids = set()
     for pattern in PARTY_PATTERNS:
         for match in re.finditer(pattern, text):
-            party_name = match.group(0).strip()
-            if not (3 <= len(party_name) <= 80):
+            raw = match.group(0).strip()
+            raw = re.sub(r'(?i)^the\s+', '', raw).strip()
+            # Strip entity suffixes (Inc., Co, Corp., LLC, Ltd.)
+            base = re.sub(r'(?i)\s+(inc\.?|corp\.?|llc|ltd\.?|co)\b', '', raw).strip()
+            # If the base (minus trailing "Co") matches a defined short name, use it.
+            canon = base
+            if base.lower() in {d.lower() for d in defined_shorts}:
+                canon = next(d for d in defined_shorts if d.lower() == base.lower())
+            elif base.endswith("Co") and base[:-2].strip() in defined_shorts:
+                canon = base[:-2].strip()
+            if not (3 <= len(canon) <= 80):
                 continue
-            party_id = f"party:{party_name.lower().replace(' ', '_').replace('.', '')}"
-            if party_id not in [n.id for n in kg.nodes.values()]:
+            party_id = f"party:{canon.lower().replace(' ', '_').replace('.', '')}"
+            if party_id not in seen_party_ids:
+                seen_party_ids.add(party_id)
                 kg.add_node(KGNode(
-                    id=party_id, name=party_name,
+                    id=party_id, name=canon,
                     entity_type=EntityType.PARTY, source_document=document_name,
                 ))
 

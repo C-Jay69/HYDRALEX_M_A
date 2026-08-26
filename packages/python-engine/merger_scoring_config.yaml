@@ -55,6 +55,22 @@ deductions:
       deduction: 8
       description: "No survival period — reps may expire at closing"
       severity: "high"
+    cap_below_basket:
+      deduction: 25
+      description: "Indemnity basket meets or exceeds the cap — contractual recovery mathematically nullified (tipping basket threshold sits above the ceiling)"
+      severity: "critical"
+    survival_too_short:
+      deduction: 15
+      description: "Survival period far below market (general 12-24mo; fundamental indefinite; tax to SOL+60 days)"
+      severity: "critical"
+    fundamental_tax_in_cap:
+      deduction: 15
+      description: "Cap expressly applies to fundamental AND tax reps — no carve-out; market standard caps fundamental at 100% EV and excludes tax"
+      severity: "critical"
+    no_fraud_carveout:
+      deduction: 10
+      description: "No fraud carve-out from indemnity cap/basket/survival — contractual fraud recovery is capped"
+      severity: "high"
 
   earnout:
     undefined_metrics:
@@ -158,6 +174,28 @@ deductions:
       severity: "high"
       per_schedule_missing: 1  # additional per schedule (capped at base deduction)
 
+  party_integrity:
+    ghost_obligor:
+      deduction: 30
+      description: "Obligation imposed on a party never defined or signed — indemnity illusory"
+      severity: "critical"
+    party_label_inconsistency:
+      deduction: 15
+      description: "Operative clauses name a party differently from the defined party (e.g. indemnitor 'Seller' but defined party 'Target') — ambiguous obligor"
+      severity: "high"
+    undefined_controlling_terms:
+      deduction: 15
+      description: "Controlling defined terms referenced but never defined"
+      severity: "high"
+    indemnification_procedures:
+      deduction: 15
+      description: "Indemnification referenced but no claim/defense/settlement procedures"
+      severity: "high"
+    escrow_survival_mismatch:
+      deduction: 20
+      description: "Escrow releases before indemnity survival period"
+      severity: "high"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DETECTION PATTERNS  (compiled to regex at runtime)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -175,6 +213,10 @@ detection_patterns:
         - "aggregate liability.*shall not exceed"
         - "maximum liability"
         - "cap on (?:liability|indemnification)"
+        - "cap\\s+of\\s*[\\d.]+\\s*%"
+        - "aggregate cap"
+        - "cap\\s+of\\s*\\$\\s?[\\d,.]+"
+        - "\\$\\s?[\\d,.]+\\s*(?:million|billion|mm|m|bn)?\\s*cap"
     basket_patterns:
       patterns:
         - "\\bbasket\\b"
@@ -267,6 +309,13 @@ interaction_weighting:
         - "weasel_words_present"
       compounded_deduction: 12
       description: "No indemnity + weak reps = buyer has zero post-closing recovery path."
+    indemnity_nullification_present:
+      name: "Indemnity Nullification Stack (present-but-defective)"
+      conditions:
+        - "indemnity_cap_below_basket"
+        - "survival_period_too_short"
+      compounded_deduction: 12
+      description: "Basket >= cap AND sub-market survival = buyer has zero post-closing recovery path even though a framework is present."
 
     operational_collapse:
       name: "Operational Collapse Stack"
