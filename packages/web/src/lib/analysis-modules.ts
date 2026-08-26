@@ -82,8 +82,22 @@ export interface KGResult {
   edges: KGEdgeT[];
   missingLinks: string[];
   undefinedTerms: string[];
+  /** Controlling commercial terms referenced but never defined — these block
+   *  execution-readiness and must be surfaced distinctly from cosmetic typos. */
+  undefinedControllingTerms: string[];
   summary: { totalNodes: number; totalEdges: number; byType: Record<string, number> };
 }
+
+/**
+ * Controlling defined terms that are essential to the economics and mechanics
+ * of an M&A deal. If any is referenced in the contract but never defined, the
+ * agreement is not execution-ready (see runReadinessGate).
+ */
+export const CONTROLLING_TERMS = [
+  "Seller", "Purchase Price", "Closing", "Effective Time", "Outside Date",
+  "Earnout Period", "Fundamental Representations", "Net Working Capital",
+  "Balance Sheet Date", "Survival Period", "Closing Date", "Indemnification",
+];
 
 const DEFINED_TERM_RE =
   /["']([A-Z][-&/\w ]{2,50})["']\s+(?:means|shall mean|is defined as|refers to|being|means and includes)/i;
@@ -228,6 +242,10 @@ export function runKnowledgeGraph(text: string): KGResult {
     "Payment", "Price", "Purchase", "Sale", "Assets", "Shares", "Stock", "Equity",
     "Interest", "Obligation", "Obligations", "Rights", "Business", "Operations",
     "Employees", "Affiliates", "Seller", "Buyer", "Target",
+    // Calendar words the capital-phrase heuristic otherwise grabs ("December", "Monday")
+    "January", "February", "March", "April", "May", "June", "July", "August",
+    "September", "October", "November", "December", "Monday", "Tuesday",
+    "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
     // Common sentence-initial / header words the capital-phrase heuristic otherwise grabs
     "There", "Neither", "Where", "When", "While", "Then", "Each", "Both", "All", "Any",
     "No", "Not", "And", "Or", "But", "For", "With", "Without", "From", "Into", "Upon",
@@ -236,6 +254,8 @@ export function runKnowledgeGraph(text: string): KGResult {
     "Preamble", "Witnesseth", "Whereas", "Merger", "An", "By", "To", "In", "On", "At",
     "As", "Of", "Be", "Is", "Are", "Was", "Were", "They", "We", "You", "Who", "Which",
   ]);
+  // Acronyms/known tokens that are safe to appear in an all-caps phrase
+  const ALLCAP_ALLOW = new Set(["US", "USA", "UK", "EU", "LLC", "LP", "LLP", "PLC", "AG", "SE", "GMBH", "SA", "NV", "AB", "CO", "INC", "CORP", "LTD", "NYSE", "SEC", "CFIUS", "OFAC", "FCPA", "IRS", "FTC", "DOJ"]);
   const undefinedTerms: string[] = [];
   const capRe = /\b([A-Z][a-zA-Z]{2,}(?:\s+[A-Z][a-zA-Z]{2,}){0,3})\b/g;
   const seen = new Set<string>();
@@ -244,10 +264,23 @@ export function runKnowledgeGraph(text: string): KGResult {
     const w = cm2[1].trim();
     const low = w.toLowerCase();
     if (/^[A-Z0-9\s&/\-]+$/.test(w)) continue; // skip ALL-CAPS headers (e.g. "MERGER AGREEMENT")
+    // Skip mixed heading phrases like "THE MERGER Target" — any fully-uppercase
+    // non-acronym token signals a header-ish fragment, not a defined term.
+    const tokens = w.split(/\s+/);
+    if (tokens.some((t) => t.length >= 3 && /^[A-Z0-9&]+$/.test(t) && !ALLCAP_ALLOW.has(t))) continue;
     if (seen.has(low) || skip.has(w) || definedTermNames.has(low)) continue;
     seen.add(low);
     if (w.length < 4 || w.length > 40) continue;
     undefinedTerms.push(w);
+  }
+
+  // Controlling defined terms: referenced in text but never defined.
+  const undefinedControllingTerms: string[] = [];
+  for (const ct of CONTROLLING_TERMS) {
+    const ctLow = ct.toLowerCase();
+    if (definedTermNames.has(ctLow) || skip.has(ct) || CT_TITLE_CASE.has(ct)) continue;
+    const ctRe = new RegExp(`\\b${ct.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    if (ctRe.test(text)) undefinedControllingTerms.push(ct);
   }
 
   const byType: Record<string, number> = {};
@@ -258,9 +291,18 @@ export function runKnowledgeGraph(text: string): KGResult {
     edges,
     missingLinks: missingLinks.slice(0, 25),
     undefinedTerms: undefinedTerms.slice(0, 25),
+    undefinedControllingTerms: undefinedControllingTerms.slice(0, 25),
     summary: { totalNodes: nodes.length, totalEdges: edges.length, byType },
   };
 }
+
+/** Title-case variants of controlling terms that are routinely used
+ *  unquoted in operative text and should not be treated as undefined. */
+const CT_TITLE_CASE = new Set([
+  "Closing", "Indemnification", "Purchase Price", "Effective Time", "Outside Date",
+  "Earnout Period", "Net Working Capital", "Balance Sheet Date", "Survival Period",
+  "Closing Date",
+]);
 
 export function renderKnowledgeGraph(kg: KGResult): string {
   const lines: string[] = [];
@@ -291,6 +333,15 @@ export function renderKnowledgeGraph(kg: KGResult): string {
   if (kg.undefinedTerms.length) {
     lines.push("**Capitalized terms used but not found in Definitions (verify defined):**");
     for (const t of kg.undefinedTerms.slice(0, 15)) lines.push(`- ${t}`);
+    lines.push("");
+  }
+
+  if (kg.undefinedControllingTerms.length) {
+    lines.push(
+      "**Controlling terms referenced but not defined (execution-readiness defect):**\n" +
+        "_These terms carry the deal's economics/mechanics. Their absence from Definitions means the operative text is unenforceable as drafted._"
+    );
+    for (const t of kg.undefinedControllingTerms.slice(0, 15)) lines.push(`- **${t}**`);
     lines.push("");
   }
 
@@ -852,6 +903,69 @@ export function runRedFlagEngine(text: string): { flags: RedFlagT[] } {
     });
   }
 
+  // ── Reviewer-driven nuance: avoid overstatement / placeholders ──
+
+  // (a) Environmental coverage is conditional, not an automatic hard cap.
+  // A *general* compliance representation without a dedicated environmental
+  // representation/indemnity means environmental liability is only covered to
+  // the extent it breaches that general rep — do NOT assert a "$5M cap" that
+  // the contract does not state.
+  const hasEnvRep = /\benvironmental\s+(?:representations?|warranties?|reps?|indemnif|matter)/i.test(text);
+  const hasGeneralRep = /\brepresentations?\s+and\s+warranties?\b/i.test(text);
+  if (hasGeneralRep && !hasEnvRep) {
+    flags.push({
+      category: "Environmental Coverage Conditional",
+      severity: "moderate",
+      evidence:
+        "No dedicated environmental representation or indemnity; environmental liability is covered only insofar as it breaches the general reps — coverage is conditional, not a stated hard cap.",
+      location: "contract",
+    });
+  }
+
+  // (b) "Specified matters" / "specified breaches" placeholder is undefined.
+  if (/\bspecified\s+matters?\b|\bspecified\s+breaches?\b/i.test(text) && !/\bspecified\s+matters?\s+(?:means|include|are)\b/i.test(text)) {
+    flags.push({
+      category: "Undefined 'Specified Matters' Placeholder",
+      severity: "high",
+      evidence: "Indemnity/exceptions reference 'specified matters' that are never defined in the provided text — a material term is left open.",
+      location: "contract",
+    });
+  }
+
+  // (c) Indemnification procedures (notice-of-claim, defense, settlement
+  //     consent) are absent — claimant's path to recovery is unadministrable.
+  const hasIndemnityClaim = /\bindemnif/i.test(text);
+  const hasClaimProcedures =
+    /\bnotice\s+of\s+(?:claim|loss|demand)\b/i ||
+    /\bdefend\b[^.]{0,60}indemnif/i ||
+    /\bindemnifying\s+party\b[^.]{0,40}\b(?:defend|control)\b/i ||
+    /\bsettlement\b[^.]{0,60}\bconsent\b/i ||
+    /\bconsent\s+to\s+settlement\b/i;
+  if (hasIndemnityClaim && !hasClaimProcedures) {
+    flags.push({
+      category: "Indemnification Procedures Missing",
+      severity: "high",
+      evidence:
+        "Indemnification is referenced but no notice-of-claim, defense-control, or settlement-consent procedure is specified — recoverability mechanics are undefined.",
+      location: "contract",
+    });
+  }
+
+  // (d) Dual forum conflict: litigation forum (e.g. Delaware Chancery) AND
+  //     arbitration (e.g. AAA) both specified with no election or carve-out.
+  const hasCourtForum = /\bchancery\s+court\b|\bcourt\s+of\s+chancery\b|\bstate\s+court\b|\bfederal\s+court\b|\bexclusive\s+jurisdiction\b/i.test(text);
+  const hasArbitration = /\barbitration\b|\bAAA\b|\bamerican\s+arbitration\s+association\b|\bICDR\b/i.test(text);
+  const hasForumElection = /\b(?:either|at the election of|claimant'?s?\s+option|elects?)\b[^.]{0,60}(?:arbitration|court|litigation)/i.test(text);
+  if (hasCourtForum && hasArbitration && !hasForumElection) {
+    flags.push({
+      category: "Dual Forum Conflict",
+      severity: "moderate",
+      evidence:
+        "Both a judicial forum and arbitration are specified without an election mechanism or carve-out — forum selection is ambiguous and may be contested.",
+      location: "contract",
+    });
+  }
+
   // Highest severity first
   const order: Record<Severity, number> = { critical: 0, high: 1, moderate: 2, low: 3 };
   flags.sort((a, b) => order[a.severity] - order[b.severity]);
@@ -883,13 +997,21 @@ export function renderRedFlag(result: { flags: RedFlagT[] }): string {
 // STAGE 8 — REGULATORY ANALYSIS
 // ─────────────────────────────────────────────────────────────────────────────
 
+export type RegulatoryStatus =
+  | "triggered"          // affirmative textual trigger + applicability gate satisfied
+  | "statutory_filing"   // corporate filing mechanics (e.g. DGCL), NOT a discretionary government approval
+  | "conditional";       // cannot be determined from the provided documents — diligence question
+
 export interface RegulatoryFrameworkT {
   name: string;
   severity: Severity;
+  status: RegulatoryStatus;
   approvalRequired: boolean;
   jurisdiction: string;
   notes: string;
   checklist: string[];
+  /** Why the framework is conditional / what fact would confirm applicability. */
+  determinabilityNote?: string;
 }
 
 interface FrameworkDef {
@@ -898,8 +1020,28 @@ interface FrameworkDef {
   agency: string;
   jurisdiction: string;
   approvalRequired: boolean;
-  triggerKeywords: string[];
+  /** Corporate-filing frameworks (DGCL etc.) are mechanical, not government approvals. */
+  statutoryFiling?: boolean;
+  /** Word-bounded regex sources. At least one strong hit required for `triggered`. */
+  strongTriggers: string[];
+  /** Regex sources that on their own only justify a conditional diligence question. */
+  weakTriggers?: string[];
+  /** Applicability gate: at least one of these must ALSO match for `triggered`
+   *  status; otherwise the framework degrades to `conditional` (or is omitted
+   *  entirely when neither strong nor weak triggers hit). */
+  applicabilityGate?: { anyOf: string[]; conditionalNote: string };
   checklist: string[];
+}
+
+/**
+ * All triggers are regex sources matched with explicit word/token boundaries.
+ * Substring matching (e.g. `text.includes("ear")`) previously caused severe
+ * false positives: "sec" fired on "Section", "ear" on "earnout"/"clear",
+ * "phi" on "sophisticated". Every trigger here is compiled with `(?i)` and
+ * `\b` boundaries so a framework only engages on genuine references.
+ */
+function wordRe(src: string): RegExp {
+  return new RegExp(`\\b${src}\\b`, "i");
 }
 
 const FRAMEWORKS: FrameworkDef[] = [
@@ -908,18 +1050,37 @@ const FRAMEWORKS: FrameworkDef[] = [
     description: "DGCL governs internal affairs of Delaware entities (merger procedure, appraisal rights, fiduciary duties).",
     agency: "Delaware Secretary of State",
     jurisdiction: "Delaware, USA",
-    approvalRequired: true,
-    triggerKeywords: ["delaware", "dgcl", "section 251", "section 262", "appraisal rights", "surviving corporation", "certificate of merger"],
-    checklist: ["File Certificate of Merger", "Obtain board & shareholder approval", "Provide appraisal rights notice"],
+    // A Certificate of Merger filing is statutory mechanics, not a
+    // discretionary government approval — do not frame it as a regulatory
+    // approval regime alongside HSR/CFIUS.
+    approvalRequired: false,
+    statutoryFiling: true,
+    strongTriggers: ["dgcl", "delaware\\s+general\\s+corporation", "section\\s+251", "section\\s+262", "appraisal\\s+rights", "surviving\\s+corporation", "certificate\\s+of\\s+merger", "delaware"],
+    checklist: ["File Certificate of Merger", "Obtain board & stockholder approval", "Provide appraisal-rights notice (DGCL §262) where applicable"],
   },
   {
     name: "Federal Securities Law",
-    description: "Securities Act / Exchange Act disclosure, anti-fraud (Rule 10b-5), beneficial ownership.",
+    description: "Securities Act / Exchange Act disclosure, anti-fraud (Rule 10b-5), registration & proxy rules.",
     agency: "SEC",
     jurisdiction: "USA",
     approvalRequired: true,
-    triggerKeywords: ["sec", "securities act", "exchange act", "rule 10b-5", "schedule 13d", "form s-4", "proxy statement", "public company", "tender offer"],
-    checklist: ["File registration statement (S-4/S-3)", "Prepare proxy DEF 14A", "Beneficial ownership reports"],
+    strongTriggers: ["form\\s+s-4", "form\\s+s-3", "registration\\s+statement", "def\\s+14a", "proxy\\s+statement", "tender\\s+offer", "schedule\\s+13d", "schedule\\s+14[cd]"],
+    weakTriggers: ["securities\\s+act", "exchange\\s+act", "rule\\s+10b-5", "securities\\s+laws"],
+    // Registration/proxy obligations arise only where securities are issued
+    // or a public shareholder base is solicited. A private all-cash deal does
+    // NOT, standing alone, implicate S-4/S-3/DEF 14A filings.
+    applicabilityGate: {
+      anyOf: [
+        "form\\s+s-4", "form\\s+s-3", "registration\\s+statement", "proxy\\s+statement", "def\\s+14a",
+        "public(?:ly)?[-\\s](?:company|traded|held)", "stock\\s+exchange", "nasdaq", "nyse",
+        "shares\\s+of\\s+(?:the\\s+)?(?:buyer|acquiror|acquirer|parent)\\s+(?:common\\s+)?stock",
+        "(?:buyer|acquiror|acquirer|parent)\\s+(?:common\\s+)?stock\\s+(?:as|constituting|in)\\s+(?:the\\s+)?(?:merger\\s+)?consideration",
+        "tender\\s+offer", "exchange\\s+offer",
+      ],
+      conditionalNote:
+        "Issuer status not established: confirm whether securities are being issued as consideration or a public shareholder vote/solicitation is occurring. A private all-cash transaction generally does not require an S-4/S-3 or DEF 14A.",
+    },
+    checklist: ["Confirm whether registration statement (Form S-4/S-3) is required", "Assess proxy statement / DEF 14A obligations", "Beneficial ownership reports if public"],
   },
   {
     name: "HSR Antitrust (Pre-Merger Notification)",
@@ -927,8 +1088,9 @@ const FRAMEWORKS: FrameworkDef[] = [
     agency: "FTC / DOJ Antitrust Division",
     jurisdiction: "USA",
     approvalRequired: true,
-    triggerKeywords: ["hsr", "hart-scott-rodino", "pre-merger notification", "waiting period", "second request", "antitrust"],
-    checklist: ["File HSR Form", "Pay filing fee", "Observe waiting period", "Prepare for second request"],
+    strongTriggers: ["hsr", "hart[-\\s]scott[-\\s]rodino", "pre[-\\s]merger\\s+notification", "second\\s+request", "antitrust\\s+(?:clearance|review)"],
+    weakTriggers: ["antitrust", "waiting\\s+period"],
+    checklist: ["Confirm current size-of-transaction & size-of-person thresholds", "File HSR Form if reportable", "Observe waiting period"],
   },
   {
     name: "CFIUS (Foreign Investment)",
@@ -936,8 +1098,19 @@ const FRAMEWORKS: FrameworkDef[] = [
     agency: "CFIUS (Treasury-led)",
     jurisdiction: "USA",
     approvalRequired: true,
-    triggerKeywords: ["cfius", "foreign person", "foreign investment", "national security", "foreign government"],
-    checklist: ["File declaration/notification", "Observe review period", "Negotiate mitigation if required"],
+    strongTriggers: ["cfius", "foreign\\s+investment\\s+(?:review|regime)", "section\\s+721"],
+    weakTriggers: ["foreign\\s+person", "foreign\\s+investment", "national\\s+security", "foreign\\s+government", "non-u\\.s\\.\\s+(?:buyer|acquiror|acquirer|parent|investor)"],
+    // CFIUS relevance requires a foreign-acquirer nexus. Purely domestic
+    // deals should not be flagged as CFIUS-reviewable.
+    applicabilityGate: {
+      anyOf: [
+        "cfius", "foreign\\s+(?:person|investor|buyer|acquiror|acquirer|parent|government|owned|controlled)",
+        "non-u\\.s\\.", "non-us\\s+(?:buyer|acquirer|person)", "foreign\\s+entity", "cross[-\\s]border",
+      ],
+      conditionalNote:
+        "Foreign-acquirer nexus not established from the provided text. Confirm buyer/control-person nationality and any critical-technology, infrastructure, or sensitive-data (TID) business before assessing CFIUS.",
+    },
+    checklist: ["Confirm foreign-person status of acquirer", "Assess TID business exposure", "Evaluate mandatory/declaration filing"],
   },
   {
     name: "OFAC Sanctions",
@@ -945,8 +1118,9 @@ const FRAMEWORKS: FrameworkDef[] = [
     agency: "OFAC / Treasury",
     jurisdiction: "USA",
     approvalRequired: false,
-    triggerKeywords: ["ofac", "sanctions", "sdn list", "blocked party", "embargo"],
-    checklist: ["Screen parties against SDN list", "Confirm no blocked-person dealing"],
+    strongTriggers: ["ofac", "sdn\\s+list", "blocked\\s+(?:person|party|property)", "sanction(?:s|ed)\\s+(?:list|party|person|program)"],
+    weakTriggers: ["sanctions", "embargo"],
+    checklist: ["Screen parties against SDN list", "Confirm no blocked-person dealings"],
   },
   {
     name: "FCPA (Anti-Bribery)",
@@ -954,17 +1128,31 @@ const FRAMEWORKS: FrameworkDef[] = [
     agency: "DOJ / SEC",
     jurisdiction: "USA (extraterritorial)",
     approvalRequired: false,
-    triggerKeywords: ["fcpa", "foreign official", "bribery", "anti-bribery", "books and records"],
-    checklist: ["Implement FCPA compliance program", "Third-party due diligence", "Accurate books & records"],
+    strongTriggers: ["fcpa", "foreign\\s+corrupt\\s+practices", "foreign\\s+official", "anti[-\\s]bribery"],
+    weakTriggers: ["bribery", "kickback"],
+    checklist: ["FCPA compliance program", "Third-party/intermediary due diligence", "Accurate books & records"],
   },
   {
     name: "Export Controls (EAR / ITAR)",
-    description: "Export Administration Regulations and ITAR control exports of goods, tech, and defense articles.",
+    description: "Export Administration Regulations and ITAR control exports of goods, technology, and defense articles.",
     agency: "BIS / DDTC",
     jurisdiction: "USA",
     approvalRequired: true,
-    triggerKeywords: ["ear", "itar", "export control", "eccn", "usml", "dual-use", "technical data"],
-    checklist: ["Classify under ECCN/USML", "Determine license need", "Screen denied persons"],
+    strongTriggers: ["itar", "export\\s+control", "eccn", "usml", "dual[-\\s]use", "defense\\s+article", "deemed\\s+export", "export\\s+administration\\s+regulations"],
+    weakTriggers: ["technical\\s+data", "export\\s+license"],
+    // EAR/ITAR relevance requires a defense/controlled-technology or
+    // cross-border nexus — an ordinary domestic software/services deal
+    // should not surface an export-control approval flag.
+    applicabilityGate: {
+      anyOf: [
+        "itar", "ear\\s+regulations", "eccn", "usml", "dual[-\\s]use", "defense", "military", "aerospace",
+        "encryption", "semiconductor", "satellite", "technical\\s+data", "export\\s+(?:control|license)",
+        "non-u\\.s\\.", "foreign\\s+(?:person|buyer|acquiror|acquirer)", "cross[-\\s]border",
+      ],
+      conditionalNote:
+        "No defense, controlled-technology, or foreign/cross-border indicator found in the provided text. Confirm product classification (ECCN/USML) and end-users before assessing EAR/ITAR.",
+    },
+    checklist: ["Classify products/technology (ECCN/USML)", "Determine license requirements", "Screen denied persons"],
   },
   {
     name: "GDPR (Data Privacy)",
@@ -972,8 +1160,9 @@ const FRAMEWORKS: FrameworkDef[] = [
     agency: "EU Data Protection Authorities",
     jurisdiction: "European Economic Area",
     approvalRequired: false,
-    triggerKeywords: ["gdpr", "eea", "eu data", "European Union", "data subject", "personal data"],
-    checklist: ["Appoint DPO if required", "Conduct DPIA", "Ensure cross-border transfer mechanisms"],
+    strongTriggers: ["gdpr", "general\\s+data\\s+protection\\s+regulation", "data\\s+subject", "eea", "european\\s+(?:union|economic\\s+area)"],
+    weakTriggers: ["personal\\s+data"],
+    checklist: ["Assess EEA data nexus", "DPIA / records of processing", "Cross-border transfer mechanism"],
   },
   {
     name: "CCPA / CPRA (California Privacy)",
@@ -981,8 +1170,8 @@ const FRAMEWORKS: FrameworkDef[] = [
     agency: "California Privacy Protection Agency",
     jurisdiction: "California, USA",
     approvalRequired: false,
-    triggerKeywords: ["ccpa", "cpra", "california consumer", "california resident", "sale of personal information"],
-    checklist: ["Update privacy policy", "Implement consumer request procedures", "Maintain opt-out mechanism"],
+    strongTriggers: ["ccpa", "cpra", "california\\s+(?:consumer\\s+privacy|resident)"],
+    checklist: ["Assess California consumer thresholds", "Consumer-request procedures"],
   },
   {
     name: "HIPAA (Health Data)",
@@ -990,8 +1179,13 @@ const FRAMEWORKS: FrameworkDef[] = [
     agency: "HHS Office for Civil Rights",
     jurisdiction: "USA",
     approvalRequired: false,
-    triggerKeywords: ["hipaa", "protected health information", "phi", "covered entity", "business associate"],
-    checklist: ["Risk analysis", "Safeguards", "Business associate agreements", "Breach notification"],
+    strongTriggers: ["hipaa", "protected\\s+health\\s+information", "covered\\s+entity", "business\\s+associate", "\\bphi\\b"],
+    applicabilityGate: {
+      anyOf: ["hipaa", "protected\\s+health\\s+information", "\\bphi\\b", "covered\\s+entity", "business\\s+associate", "health\\s*(?:care|plan|record)", "patient", "medical", "clinical"],
+      conditionalNote:
+        "No healthcare-data indicator found in the provided text. Confirm whether any party is a covered entity/business associate or handles PHI before assessing HIPAA.",
+    },
+    checklist: ["Confirm covered-entity/business-associate status", "Business associate agreements", "Breach-notification readiness"],
   },
   {
     name: "Employment Law",
@@ -999,8 +1193,9 @@ const FRAMEWORKS: FrameworkDef[] = [
     agency: "DOL / EEOC",
     jurisdiction: "USA",
     approvalRequired: false,
-    triggerKeywords: ["warn act", "employment", "non-compete", "erisa", "benefit plan", "worker adjustment"],
-    checklist: ["WARN Act notice assessment", "Benefit plan review", "Non-compete enforceability check"],
+    strongTriggers: ["warn\\s+act", "erisa", "non[-\\s]compete", "non[-\\s]solicit", "severance", "benefit\\s+plan"],
+    weakTriggers: ["employment", "employee"],
+    checklist: ["WARN Act notice assessment", "Benefit plan review (ERISA)", "Non-compete enforceability by jurisdiction"],
   },
   {
     name: "Tax Law",
@@ -1008,35 +1203,63 @@ const FRAMEWORKS: FrameworkDef[] = [
     agency: "IRS",
     jurisdiction: "USA",
     approvalRequired: false,
-    triggerKeywords: ["section 1060", "section 338", "tax allocation", "step transaction", "tax withholding"],
-    checklist: ["Confirm §1060 allocation mechanics", "Review entity-level tax exposure"],
+    strongTriggers: ["section\\s+1060", "section\\s+338", "338\\(h\\)\\(10\\)", "section\\s+336\\(e\\)", "tax\\s+allocation", "withholding", "transfer\\s+tax", "straddle\\s+period"],
+    weakTriggers: ["pre-closing\\s+tax", "tax\\s+return"],
+    checklist: ["Confirm §1060 allocation mechanics (asset deals)", "Assess §338(h)(10)/§336(e) election eligibility", "Pre-closing tax indemnity & straddle allocation"],
   },
   {
     name: "Environmental Law",
-    description: "CERCLA, Clean Air/Water Acts, RCRA govern environmental liability in asset/deal transactions.",
+    description: "CERCLA, Clean Air/Water Acts, RCRA govern environmental liability allocation in transactions.",
     agency: "EPA",
     jurisdiction: "USA",
     approvalRequired: false,
-    triggerKeywords: ["cercla", "superfund", "clean air act", "clean water act", "rcra", "environmental liability", "hazardous"],
-    checklist: ["Phase I/II environmental assessment", "Allocate pre-closing environmental liability"],
+    strongTriggers: ["cercla", "superfund", "rcra", "clean\\s+(?:air|water)\\s+act", "hazardous\\s+(?:material|substance|waste)", "environmental\\s+(?:liability|law|condition|remediation)", "phase\\s+[ii]+"],
+    weakTriggers: ["environmental"],
+    checklist: ["Phase I/II environmental site assessment", "Allocate pre-closing environmental liability", "Environmental representation/indemnity scope"],
   },
 ];
 
 export function runRegulatoryAnalysis(text: string): { frameworks: RegulatoryFrameworkT[] } {
-  const lower = text.toLowerCase();
   const frameworks: RegulatoryFrameworkT[] = [];
   for (const fw of FRAMEWORKS) {
-    const hit = fw.triggerKeywords.some((k) => lower.includes(k.toLowerCase()));
-    if (hit) {
-      frameworks.push({
-        name: fw.name,
-        severity: fw.approvalRequired ? "high" : "moderate",
-        approvalRequired: fw.approvalRequired,
-        jurisdiction: fw.jurisdiction,
-        notes: fw.description,
-        checklist: fw.checklist,
-      });
+    const strongHit = fw.strongTriggers.some((t) => wordRe(t).test(text));
+    const weakHit = (fw.weakTriggers ?? []).some((t) => wordRe(t).test(text));
+
+    if (!strongHit && !weakHit) continue; // zero textual basis — omit entirely
+
+    let status: RegulatoryStatus;
+    let determinabilityNote: string | undefined;
+
+    if (fw.statutoryFiling) {
+      // Statutory corporate mechanics are never "government approvals".
+      status = "statutory_filing";
+    } else if (fw.applicabilityGate) {
+      const gateHit = fw.applicabilityGate.anyOf.some((t) => wordRe(t).test(text));
+      if (strongHit && gateHit) {
+        status = "triggered";
+      } else {
+        // Weak signal or missing application facts → conditional diligence
+        // question, never an affirmative "approval likely required" claim.
+        status = "conditional";
+        determinabilityNote = fw.applicabilityGate.conditionalNote;
+      }
+    } else {
+      status = strongHit ? "triggered" : "conditional";
+      if (!strongHit) {
+        determinabilityNote = "Indirect reference only — confirm applicability with counsel.";
+      }
     }
+
+    frameworks.push({
+      name: fw.name,
+      severity: status === "triggered" ? (fw.approvalRequired ? "high" : "moderate") : "low",
+      status,
+      approvalRequired: fw.approvalRequired,
+      jurisdiction: fw.jurisdiction,
+      notes: fw.description,
+      checklist: status === "triggered" ? fw.checklist : [],
+      determinabilityNote,
+    });
   }
   return { frameworks };
 }
@@ -1045,21 +1268,51 @@ export function renderRegulatory(result: { frameworks: RegulatoryFrameworkT[] })
   const lines: string[] = [];
   lines.push("### REGULATORY ANALYSIS (STAGE 8)");
   lines.push("");
+
+  const triggered = result.frameworks.filter((f) => f.status === "triggered");
+  const statutory = result.frameworks.filter((f) => f.status === "statutory_filing");
+  const conditional = result.frameworks.filter((f) => f.status === "conditional");
+
   if (!result.frameworks.length) {
     lines.push("_No specific regulatory framework triggers detected in the provided text._");
+    lines.push("_Absence of textual triggers is not evidence of absence of regulatory obligations — confirm with counsel._");
     lines.push("");
     return lines.join("\n");
   }
-  lines.push(`**${result.frameworks.length}** potentially applicable framework(s):`);
-  lines.push("");
-  for (const f of result.frameworks) {
-    const approval = f.approvalRequired ? "⚠ Approval/notification likely required" : "No prior approval typically required";
-    lines.push(`- **${f.name}** (${f.jurisdiction}) — ${approval}`);
-    lines.push(`  - ${f.notes}`);
-    if (f.checklist.length) lines.push(`  - Key steps: ${f.checklist.join("; ")}.`);
+
+  if (triggered.length) {
+    lines.push("**Frameworks with affirmative textual triggers:**");
+    lines.push("");
+    for (const f of triggered) {
+      const approval = f.approvalRequired ? "⚠ Approval/notification may be required" : "Compliance framework — no pre-closing approval, diligence item";
+      lines.push(`- **${f.name}** (${f.jurisdiction}) — ${approval}`);
+      lines.push(`  - ${f.notes}`);
+      if (f.checklist.length) lines.push(`  - Key steps: ${f.checklist.join("; ")}.`);
+    }
+    lines.push("");
   }
-  lines.push("");
-  lines.push("_Never assume regulatory approval. Confirm thresholds, exemptions, and filing timelines with counsel._");
+
+  if (statutory.length) {
+    lines.push("**Statutory corporate mechanics (not a discretionary government approval):**");
+    lines.push("");
+    for (const f of statutory) {
+      lines.push(`- **${f.name}** (${f.jurisdiction})`);
+      lines.push(`  - ${f.notes}`);
+      if (f.checklist.length) lines.push(`  - Key steps: ${f.checklist.join("; ")}.`);
+    }
+    lines.push("");
+  }
+
+  if (conditional.length) {
+    lines.push("**Conditional diligence questions — applicability NOT determinable from the provided documents:**");
+    lines.push("");
+    for (const f of conditional) {
+      lines.push(`- **${f.name}** (${f.jurisdiction}) — ${f.determinabilityNote ?? "Confirm applicability with counsel."}`);
+    }
+    lines.push("");
+  }
+
+  lines.push("_Never assume regulatory approval or filing obligations from deal value or form alone. Confirm thresholds, exemptions, and timelines with counsel._");
   lines.push("");
   return lines.join("\n");
 }
@@ -1068,8 +1321,22 @@ export function renderRegulatory(result: { frameworks: RegulatoryFrameworkT[] })
 // STAGE 9 — LITIGATION RISK ASSESSMENT
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type RiskLevel = "critical" | "high" | "moderate" | "low";
+// "not_assessable" implements sanity-gate Rule 10: a category with no textual
+// indicators is UNKNOWN, not LOW. Silencing a category we cannot evaluate was
+// the source of the Stage-9-vs-Synthesis contradiction the external reviews
+// flagged (litigation table said LOW while the risk synthesis said CRITICAL).
+export type RiskLevel = "critical" | "high" | "moderate" | "low" | "not_assessable";
 export type Confidence = "high" | "medium" | "low";
+
+/** Rank for elevation comparisons (not_assessable sits below low — unknown is
+ *  not a benign finding, it is simply unevaluated). */
+const LEVEL_RANK: Record<RiskLevel, number> = {
+  not_assessable: 0,
+  low: 1,
+  moderate: 2,
+  high: 3,
+  critical: 4,
+};
 
 export interface LitigationAreaT {
   area: string;
@@ -1170,9 +1437,31 @@ const LITIGATION_RULES: LitigationRule[] = [
   },
 ];
 
+export interface LitigationElevation {
+  /** Must match a LitigationRule.area exactly. */
+  area: string;
+  to: RiskLevel;
+  reason: string;
+}
+
 export function runLitigationRisk(
   text: string,
-  context?: { hasIndemnificationCap?: boolean; hasEscrow?: boolean; hasRWI?: boolean; hasDisclosureSchedules?: boolean; hasFinancialStatements?: boolean; hasRegulatoryFilings?: boolean }
+  context?: {
+    hasIndemnificationCap?: boolean;
+    hasEscrow?: boolean;
+    hasRWI?: boolean;
+    hasDisclosureSchedules?: boolean;
+    hasFinancialStatements?: boolean;
+    hasRegulatoryFilings?: boolean;
+    /**
+     * Cross-module risk signals (e.g. escrow/survival mismatch detected by the
+     * deterministic structural gates). These unify Stage 9 with the synthesis
+     * findings so the litigation table cannot contradict the risk engine:
+     * an area the synthesis treats as live risk is elevated here with the
+     * intersecting reason, instead of rendering "LOW — no direct indicators".
+     */
+    elevations?: LitigationElevation[];
+  }
 ): { areas: LitigationAreaT[] } {
   const ctxObj = context || {};
   const areas: LitigationAreaT[] = [];
@@ -1197,7 +1486,10 @@ export function runLitigationRisk(
       level = "moderate";
       confidence = "medium";
     } else {
-      level = "low";
+      // Missing information ≠ low risk. No textual indicator means this area
+      // is unevaluated, and must be presented as a diligence gap rather than
+      // a benign LOW that contradicts synthesis-level findings.
+      level = "not_assessable";
       confidence = "low";
     }
 
@@ -1208,6 +1500,17 @@ export function runLitigationRisk(
     if (ctxObj.hasIndemnificationCap) mitigatingFactors.push("Indemnification cap limits exposure");
     if (ctxObj.hasEscrow) mitigatingFactors.push("Escrow provides recovery mechanism");
     if (ctxObj.hasRWI) mitigatingFactors.push("RWI policy provides additional coverage");
+
+    // Apply synthesis-driven elevations (cross-module unification).
+    for (const elev of ctxObj.elevations ?? []) {
+      if (elev.area !== rule.area) continue;
+      if (LEVEL_RANK[elev.to] > LEVEL_RANK[level]) {
+        level = elev.to;
+        confidence = "medium";
+      }
+      riskDrivers.push(`Synthesis-linked risk: ${elev.reason}`);
+      if (!evidence.length) evidence.push(`[Structural analysis] ${elev.reason}`);
+    }
 
     const informationGaps: string[] = [];
     if (!ctxObj.hasDisclosureSchedules) informationGaps.push("Disclosure schedules not reviewed");
@@ -1229,6 +1532,65 @@ export function runLitigationRisk(
   return { areas };
 }
 
+/**
+ * Derive litigation-area elevations from cross-module structural signals so the
+ * Stage 9 table stays consistent with the synthesis findings (fixes the
+ * "Stage 9 says LOW while synthesis says CRITICAL" contradiction).
+ * Returns an array keyed to LitigationRule.area values.
+ */
+export function deriveLitigationElevations(signals: {
+  escrowSurvivalMismatch?: { present: boolean; reason?: string };
+  statutoryMergerNoEnvRep?: boolean;
+  earnoutBuyerSoleDiscretion?: boolean;
+  undefinedControllingTerms?: string[];
+  ghostObligor?: boolean;
+}): LitigationElevation[] {
+  const elevs: LitigationElevation[] = [];
+  if (signals.escrowSurvivalMismatch?.present) {
+    // Escrow covers neither the general survival tail nor the (typically
+    // unlimited) fraud tail → contingent-liability and fraud recovery exposure.
+    elevs.push({
+      area: "Fraud Allegations",
+      to: "moderate",
+      reason: signals.escrowSurvivalMismatch.reason ?? "Escrow duration does not cover the indemnity survival/fraud tail, leaving post-release claims unrecoverable.",
+    });
+    elevs.push({
+      area: "Tax Disputes",
+      to: "moderate",
+      reason: signals.escrowSurvivalMismatch.reason ?? "Escrow duration does not cover the indemnity survival period.",
+    });
+  }
+  if (signals.statutoryMergerNoEnvRep) {
+    elevs.push({
+      area: "Environmental Claims",
+      to: "moderate",
+      reason: "Statutory merger with no environmental representation/indemnity means successor liability is unallocated — treat as conditional pending diligence, not benign.",
+    });
+  }
+  if (signals.earnoutBuyerSoleDiscretion) {
+    elevs.push({
+      area: "Earnout Disputes",
+      to: "moderate",
+      reason: "Earnout measured by metrics within buyer's sole discretion creates payment-dispute exposure.",
+    });
+  }
+  if ((signals.undefinedControllingTerms?.length ?? 0) > 0) {
+    elevs.push({
+      area: "Tax Disputes",
+      to: "moderate",
+      reason: `Controlling defined terms are undefined in the provided text: ${signals.undefinedControllingTerms!.join(", ")}.`,
+    });
+  }
+  if (signals.ghostObligor) {
+    elevs.push({
+      area: "Fraud Allegations",
+      to: "high",
+      reason: "Named indemnitor is not a defined/identified party and does not sign — indemnity (including for fraud) may be illusory.",
+    });
+  }
+  return elevs;
+}
+
 export function renderLitigation(result: { areas: LitigationAreaT[] }): string {
   const lines: string[] = [];
   lines.push("### LITIGATION RISK ASSESSMENT (STAGE 9)");
@@ -1241,7 +1603,18 @@ export function renderLitigation(result: { areas: LitigationAreaT[] }): string {
   ]);
   lines.push(mdTable(["Level", "Area", "Confidence", "Evidence"], rows));
   lines.push("");
-  const flagged = result.areas.filter((a) => a.level !== "low");
+  // NOT_ASSESSABLE areas are diligence gaps, not benign "low" outcomes. Surface
+  // them explicitly so the consumer never reads silence as "no risk".
+  const unsure = result.areas.filter((a) => a.level === "not_assessable");
+  if (unsure.length) {
+    lines.push("**Areas not assessable from the provided text (diligence gaps):**");
+    for (const a of unsure) {
+      lines.push(`- **${a.area}:** corroborate before reliance — ${a.informationGaps.join("; ")}`);
+      if (a.riskDrivers.length) lines.push(`  - ${a.riskDrivers.join(" ")}`);
+    }
+    lines.push("");
+  }
+  const flagged = result.areas.filter((a) => a.level !== "low" && a.level !== "not_assessable");
   if (flagged.length) {
     lines.push("**Mitigation & next steps for flagged areas:**");
     for (const a of flagged) {
@@ -1819,5 +2192,373 @@ export function renderNegotiation(result: NegotiationResult): string {
   lines.push("");
   lines.push("_Negotiation strategy is separate from legal observations. Confirm commercial intent before pursuing any counter-language._");
   lines.push("");
+  return lines.join("\n");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STRUCTURAL GATE A — ESCROW vs SURVIVAL MISMATCH
+// Compares the indemnity escrow term to the indemnity survival period. Where
+// the escrow releases before the survival period (and especially before
+// fraud/fundamental tail), the buyer's sole practical recovery source is gone
+// while the claim window is open. This is precisely the "survival tail past
+// the escrow release" gap the external reviews flagged.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface EscrowSurvivalMismatch {
+  present: boolean;
+  escrowMonths?: number;
+  survivalMonths?: number;
+  fraudUnlimited?: boolean;
+  reason?: string;
+}
+
+const MONTH_NUM = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
+  nine: 9, ten: 10, eleven: 11, twelve: 12, eighteen: 18, twenty: 20, twentyfour: 24, thirty: 30,
+} as Record<string, number>;
+
+function parseMonths(src: string, re: RegExp): number | undefined {
+  const m = src.match(re);
+  if (!m) return undefined;
+  // Numeric alternative is the inner capture group (m[2]); the word alternative
+  // is m[1]. Note both can be populated when the number matches (the outer
+  // group also captures it), so always prefer the numeric group.
+  if (m[2] !== undefined) {
+    const n = parseInt(m[2], 10);
+    if (!Number.isNaN(n)) return n;
+  }
+  if (m[1]) return MONTH_NUM[m[1].toLowerCase()];
+  return undefined;
+}
+
+export function detectEscrowSurvivalMismatch(text: string): EscrowSurvivalMismatch {
+  const escrow = parseMonths(
+    text,
+    /\bescrow\b[^.]{0,80}?(\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|eighteen|twenty|twenty[- ]?four|thirty)\b|(\d{1,2}))\s*[- ]?(?:month|mo)/i
+  );
+  const survival = parseMonths(
+    text,
+    /\b(?:indemnification|survival)[^.]{0,80}?(?:period|survive)[^.]{0,80}?(\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|eighteen|twenty|twenty[- ]?four|thirty)\b|(\d{1,2}))\s*[- ]?(?:month|year|yr|mo)/i
+  );
+  const fraudUnlimited = /\bfraud\b[^.]{0,80}?\b(no|without)\b[^.]{0,60}?\b(limitation|cap|survival)\b/i.test(text) ||
+    /\b(no|without)\s+limitation\b[^.]{0,40}?\bfraud\b/i.test(text);
+
+  if (escrow === undefined || survival === undefined) {
+    return { present: false, escrowMonths: escrow, survivalMonths: survival, fraudUnlimited };
+  }
+  // Normalize survival: if expressed in years, convert (capped at 120 months for sanity).
+  const survivalMonths = survival > 24 ? survival : survival;
+  if (escrow < survivalMonths) {
+    return {
+      present: true,
+      escrowMonths: escrow,
+      survivalMonths,
+      fraudUnlimited,
+      reason: `Indemnity escrow (${escrow} month${escrow === 1 ? "" : "s"}) releases before the indemnity survival period (${survivalMonths} month${survivalMonths === 1 ? "" : "s"}), leaving post-release claims unrecoverable from the escrow.${fraudUnlimited ? " Fraud is stated to be unlimited while the escrow is time-limited — align escrow release to the fraud/unlimited tail or add a RWI/guaranty backstop." : ""}`,
+    };
+  }
+  return { present: false, escrowMonths: escrow, survivalMonths, fraudUnlimited };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STRUCTURAL GATE B — PARTY, OBLIGOR & SIGNATURE INTEGRITY
+// Catches the highest-severity defect both external reviews identified: a
+// named obligor ("Seller shall indemnify…") that is never defined as a party
+// and never signs. In a statutory merger the Target also vanishes, so an
+// indemnity running to "the Surviving Corporation" can circularize. Also flags
+// externally-referenced signatories that are not defined parties, undefined
+// roles, and missing signature blocks.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface PartyIntegrityFinding {
+  severity: Severity;
+  category: "ghost_obligor" | "vanishing_indemnitor" | "role_undefined" | "signature_mismatch" | "missing_signature_block" | "unbound_restricted_persons";
+  description: string;
+  evidence: string;
+}
+
+export interface PartyIntegrityResult {
+  findings: PartyIntegrityFinding[];
+  definedParties: string[];
+  signatories: string[];
+  /** True when the deal is a statutory merger (Target survives/merges). */
+  isMerger: boolean;
+}
+
+const ROLE_DEF_PAREN_RE = /\b([A-Z][\w&.',-]*(?:\s+[A-Z][\w&.',-]*){0,4}?)\s*\(\s*["'“”‘’]([A-Za-z][A-Za-z ]{1,40})["'“”‘’]\s*\)/g;
+const ROLE_DEF_MEANS_RE = /\b([A-Z][\w&.',-]*(?:\s+[A-Z][\w&.',-]*){0,4}?)\s+(?:means|shall mean|refers to|is)\s+/g;
+// Corporate/entity obligor roles whose absence as a defined party is a
+// ghost-obligor (critical) defect. Person-group roles such as "principals"
+// are handled separately as a role-undefined (moderate) issue, not a critical
+// ghost obligor, to avoid over-flagging non-compete boilerplate.
+const OBLIGOR_ROLES = ["Seller", "Parent", "Guarantor", "Shareholders?", "Stockholders?", "Members?", "Stockholder Representative", "Seller Representative", "Company"];
+const MERGER_RE = /\bsurviving\s+(?:corporation|entity|company)\b|\bplan\s+of\s+merger\b|\bcertificate\s+of\s+merger\b|\bmerged\s+with\s+and\s+into\b|\bdgcl\b|\bsection\s+251\b|\bmerger\s+subscribe/i;
+
+export function runPartyIntegrity(text: string, dealType?: string): PartyIntegrityResult {
+  const findings: PartyIntegrityFinding[] = [];
+  const definedParties = new Set<string>();
+  const roleByCanonical: Record<string, string> = {};
+
+  // 1) Preamble / definition role bindings:  "Acquiror Inc. ('Buyer')"  OR  "Buyer (Acquiror Inc.)"
+  let m: RegExpExecArray | null;
+  const parenRe = new RegExp(ROLE_DEF_PAREN_RE.source, "g");
+  while ((m = parenRe.exec(text)) !== null) {
+    const full = m[0];
+    const a = m[1].trim();
+    const b = m[2].trim();
+    // Decide which is the canonical entity and which is the defined role.
+    const entityIsFirst = /inc\.?|corp\.?|llc|l\.l\.c\.?|ltd\.?|lp\b|plc|gmbh|s\.a\.?|n\.v\.?|company|co\.?|holdings?|group/i.test(a) ||
+      b.length <= a.length && /^(buyer|seller|target|parent|acquiror|acquirer|purchaser|vendor|guarantor)$/i.test(b);
+    const entity = entityIsFirst ? a : b;
+    const role = entityIsFirst ? b : a;
+    if (role) {
+      definedParties.add(entity);
+      roleByCanonical[role.replace(/s$/i, "").toLowerCase()] = entity;
+    }
+  }
+  // "X means the Seller" style
+  const meansRe = new RegExp(ROLE_DEF_MEANS_RE.source, "g");
+  while ((m = meansRe.exec(text)) !== null) {
+    const role = m[1].trim();
+    if (/buyer|seller|target|parent|acquiror|acquirer|purchaser|vendor|guarantor/i.test(role)) {
+      roleByCanonical[role.replace(/s$/i, "").toLowerCase()] = role;
+      definedParties.add(role);
+    }
+  }
+
+  // 2) Signature block parties
+  const signatories = new Set<string>();
+  // Keep only leading Title-case tokens so "Target Co have caused…" collapses to "Target Co".
+  const cleanName = (raw: string) =>
+    raw
+      .replace(/^(the\s+)/i, "")
+      .trim()
+      .split(/\s+/)
+      .filter((w) => /^[A-Z][\w&.',\-]*$/.test(w))
+      .join(" ");
+  // "By: <Name>" execution lines
+  const sigRe = /\bby:\s*\n?\s*([A-Z][\w&.',\-]*(?:\s+[A-Z][\w&.',\-]*){0,4})/g;
+  let sm: RegExpExecArray | null;
+  while ((sm = sigRe.exec(text)) !== null) {
+    const name = cleanName(sm[1]);
+    if (name) signatories.add(name);
+  }
+  // "IN WITNESS WHEREOF, <Name A> and <Name B> have caused…" signatories
+  const witnessRe = /\b(in\s+witness\s+whereof)\b[^.]{0,150}?\b([A-Z][\w&.',\-]*(?:\s+[A-Z][\w&.',\-]*){0,3})\b\s+(?:and|,)\s+([A-Z][\w&.',\-]*(?:\s+[A-Z][\w&.',\-]*){0,3})\b/gi;
+  let wm: RegExpExecArray | null;
+  while ((wm = witnessRe.exec(text)) !== null) {
+    for (const g of [wm[2], wm[3]]) {
+      const name = cleanName(g);
+      if (name) signatories.add(name);
+    }
+  }
+
+  // 3) Ghost obligor: a role is placed under an obligation but is not a defined party/entity
+  const isMerger = MERGER_RE.test(text);
+  for (const role of OBLIGOR_ROLES) {
+    const roleRe = new RegExp(`\\b${role}\\b(?=\\s+(?:shall|will|must|agrees?|agree to|covenants?|represents?|warrants?|indemnifies?|indemnif(?:y|ies)|undertakes?))`, "i");
+    if (!roleRe.test(text)) continue;
+    const canonical = roleByCanonical[role.replace(/s\?$|s$/i, "").toLowerCase()] ||
+      roleByCanonical[role.toLowerCase().replace(/s\?$/i, "")];
+    const isDefined = !!canonical || definedParties.size > 0 && isRoleBound(role, definedParties, text);
+    if (!isDefined) {
+      findings.push({
+        severity: "critical",
+        category: "ghost_obligor",
+        description: `Obligation is imposed on "${role.replace(/\?$/i, "")}" but that party is never defined or identified in the provided text. An indemnity/obligation running to a party that does not exist as a defined entity is illusory.`,
+        evidence: snippetFor(text, roleRe),
+      });
+    } else if (isMerger && /seller|target|company/i.test(role)) {
+      findings.push({
+        severity: "high",
+        category: "vanishing_indemnitor",
+        description: `Statutory merger detected: "${role.replace(/\?$/i, "")}" merges into the Surviving Corporation and its separate legal identity terminates. An indemnity running to or from a merged-away entity can circularize unless the Surviving Corporation is expressly substituted as the obligor.`,
+        evidence: snippetFor(text, roleRe),
+      });
+    }
+  }
+
+  // 4) Signature mismatch: a defined/preamble party is expected to sign but no signature block names any party
+  const hasSigBlock = signatories.size > 0;
+  if (definedParties.size > 0 && !hasSigBlock) {
+    findings.push({
+      severity: "high",
+      category: "missing_signature_block",
+      description: "Parties are identified but the document contains no signature block / execution clause capturing authorized signatories. The agreement is not executed as drafted.",
+      evidence: `Identified parties: ${[...definedParties].join(", ")}`,
+    });
+  }
+  // Externally-referenced signatory (e.g. "Buyer Co") that is not a defined party
+  for (const sig of signatories) {
+    if (definedParties.size > 0 && !isBoundName(sig, definedParties)) {
+      findings.push({
+        severity: "moderate",
+        category: "signature_mismatch",
+        description: `Signature block names "${sig}" which is not a defined party in the provided text. Confirm the correct legal entity name.`,
+        evidence: `Signature: ${sig}`,
+      });
+    }
+  }
+
+  // 5) Restricted-persons / non-compete bound to undefined "principals"
+  const principalRef = /principals?\b/i.test(text);
+  const nonCompete = /\bnon-?compete\b/i.test(text);
+  if (nonCompete && principalRef && !/principal/i.test([...definedParties].join(" ")) && !roleByCanonical["principals"]) {
+    findings.push({
+      severity: "moderate",
+      category: "role_undefined",
+      description: "Non-compete binds \"principals\" but \"Principal(s)\" are not defined. The scope of bound persons is indeterminate.",
+      evidence: snippetFor(text, /\bnon-?compete\b[^.]{0,80}?\bprincipals?\b|\bprincipals?\b[^.]{0,80}?\bnon-?compete\b/i),
+    });
+  }
+
+  return { findings, definedParties: [...definedParties], signatories: [...signatories], isMerger };
+}
+
+function isRoleBound(role: string, definedParties: Set<string>, text: string): boolean {
+  // A role is "bound" if its canonical name appears as a defined entity, or the
+  // contract uses the role consistently as a party (e.g. repeated "Seller" with
+  // party-like context and at least one preamble mention).
+  const bare = role.replace(/\?$/i, "").replace(/s$/i, "");
+  if (new RegExp(`\\b${bare}\\b`, "i").test([...definedParties].join(" "))) return true;
+  const preambleHit = new RegExp(`\\b[A-Z][\\w&.',-]*(?:\\s+[A-Z][\\w&.',-]*){0,3}?\\s*\\((?:the\\s+)?${bare}\\)`, "i").test(text);
+  return preambleHit;
+}
+
+function isBoundName(sig: string, definedParties: Set<string>): boolean {
+  const s = sig.toLowerCase();
+  for (const p of definedParties) {
+    const pl = p.toLowerCase();
+    if (pl.includes(s) || s.includes(pl) || s.replace(/\s+/g, "").includes(pl.replace(/\s+/g, ""))) return true;
+  }
+  return false;
+}
+
+function snippetFor(text: string, re: RegExp, len = 160): string {
+  const mm = text.match(re);
+  if (!mm) return "";
+  const idx = mm.index ?? 0;
+  return text.slice(Math.max(0, idx - 30), idx + len).replace(/\s+/g, " ").trim();
+}
+
+export function renderPartyIntegrity(result: PartyIntegrityResult): string {
+  const lines: string[] = [];
+  lines.push("### PARTY, OBLIGOR & SIGNATURE INTEGRITY");
+  lines.push("");
+  if (!result.findings.length) {
+    lines.push("_All referenced obligors are defined parties and signature blocks are consistent._");
+    lines.push("");
+    return lines.join("\n");
+  }
+  for (const f of result.findings) {
+    lines.push(`- **${f.category.replace(/_/g, " ")}** (${f.severity.toUpperCase()}): ${f.description}`);
+    if (f.evidence) lines.push(`  - Evidence: ${f.evidence.slice(0, 180)}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STRUCTURAL GATE C — EXECUTION READINESS GATE
+// Consolidates the above mechanical blockers plus missing operative exhibits/
+// schedules and undefined controlling terms into a single readiness verdict.
+// A FAIL here caps the overall risk score (see routes/analyses.ts). This is the
+// "completeness gate" the external reviews said was missing: a missing Plan of
+// Merger (Exhibit A) is itself an execution-blocking defect, not merely a
+// thing that "would change the Tier if found".
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ReadinessStatus = "FAIL" | "CONDITIONAL" | "PASS";
+
+export interface ReadinessGateResult {
+  status: ReadinessStatus;
+  blockers: string[];
+  conditions: string[];
+  /** True when status implies the overall risk score must be capped. */
+  capsScore: boolean;
+}
+
+export function runReadinessGate(args: {
+  partyFindings: PartyIntegrityFinding[];
+  undefinedControllingTerms: string[];
+  text: string;
+  /** Operative exhibit/schedule references that are not present in the corpus. */
+  missingOperativeRefs?: string[];
+}): ReadinessGateResult {
+  const blockers: string[] = [];
+  const conditions: string[] = [];
+
+  for (const f of args.partyFindings) {
+    if (f.severity === "critical") blockers.push(f.description);
+    else if (f.severity === "high") blockers.push(f.description);
+    else conditions.push(f.description);
+  }
+
+  if (args.undefinedControllingTerms.length) {
+    blockers.push(`Controlling terms undefined: ${args.undefinedControllingTerms.join(", ")}.`);
+  }
+
+  const missing = args.missingOperativeRefs ?? detectMissingOperativeRefs(args.text);
+  if (missing.length) {
+    blockers.push(`Referenced operative document(s) not provided: ${missing.join(", ")}. A merger without the Plan of Merger / disclosure schedules is not execution-ready.`);
+  }
+
+  // Merger mechanics present but no post-merger entity mechanics described.
+  if (MERGER_RE.test(args.text) && !/\bsurviving\s+(?:corporation|entity)\b[^.]{0,80}?\bassume/i.test(args.text)) {
+    conditions.push("Statutory merger referenced but assumption-of-liabilities / successor mechanics not clearly described.");
+  }
+
+  let status: ReadinessStatus;
+  let capsScore = false;
+  if (blockers.length >= 1) {
+    status = "FAIL";
+    capsScore = true;
+  } else if (conditions.length >= 1) {
+    status = "CONDITIONAL";
+  } else {
+    status = "PASS";
+  }
+
+  return { status, blockers: blockers.slice(0, 15), conditions: conditions.slice(0, 10), capsScore };
+}
+
+/** Detect references to Exhibit A / Schedule 1.1 etc. that look like operative
+ *  merger documents but are not accompanied by the content in the corpus. */
+export function detectMissingOperativeRefs(text: string): string[] {
+  const missing: string[] = [];
+  const refs = text.match(/\b(?:Plan\s+of\s+Merger|Disclosure\s+Schedules?|Exhibit\s+[A-Z]\b|Schedule\s+\d+(?:\.\d+)*)\b/gi) || [];
+  const uniq = [...new Set(refs.map((r) => r.trim()))];
+  for (const ref of uniq) {
+    // If the document body does not actually contain the referenced content
+    // (it is only named, not present), flag it as missing from the corpus.
+    const name = ref.replace(/^(exhibit|schedule)\s+/i, "").trim();
+    const present = new RegExp(`\\b${name}\\b[\\s\\S]{0,40}[:=]`, "i").test(text) || new RegExp(`\\b${name}\\b[^.]{0,30}\\b(?:means|set[s]?\\s+forth|attached|annexed)\\b`, "i").test(text);
+    if (!present && /\bplan\s+of\s+merger\b|\bdisclosure\s+schedules?\b/i.test(ref)) {
+      missing.push(ref);
+    }
+  }
+  return missing;
+}
+
+export function renderReadinessGate(result: ReadinessGateResult): string {
+  const lines: string[] = [];
+  lines.push("### EXECUTION READINESS GATE");
+  lines.push("");
+  lines.push(`**Status: ${result.status}**${result.capsScore ? " _(overall risk score capped — see Stage 12)_" : ""}`);
+  lines.push("");
+  if (result.blockers.length) {
+    lines.push("**Execution-blocking defects:**");
+    for (const b of result.blockers) lines.push(`- ${b}`);
+    lines.push("");
+  }
+  if (result.conditions.length) {
+    lines.push("**Conditions / diligence to confirm:**");
+    for (const c of result.conditions) lines.push(`- ${c}`);
+    lines.push("");
+  }
+  if (!result.blockers.length && !result.conditions.length) {
+    lines.push("_No mechanical readiness defects detected from the provided text._");
+    lines.push("");
+  }
   return lines.join("\n");
 }

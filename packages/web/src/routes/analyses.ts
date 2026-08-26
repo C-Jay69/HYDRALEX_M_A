@@ -38,9 +38,15 @@ import {
   renderRegulatory,
   runLitigationRisk,
   renderLitigation,
+  deriveLitigationElevations,
+  runPartyIntegrity,
+  renderPartyIntegrity,
+  detectEscrowSurvivalMismatch,
+  runReadinessGate,
+  renderReadinessGate,
   type DocInput,
 } from "../lib/analysis-modules.js";
-import { runQaGuardrail, renderQaGuardrail, stripInternalTags } from "../lib/qa-guardrails.js";
+import { runQaGuardrail, renderQaGuardrail, stripInternalTags, sanitizeTerminology, checkScorecardConsistency } from "../lib/qa-guardrails.js";
 import { authMiddleware, requireAuth } from "../middleware/auth.js";
 import { getQuotaUsage, incrementAnalysisUsage } from "../lib/quota.js";
 import { userMeta } from "../database/schema.js";
@@ -400,7 +406,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Extract likely defined parties (quoted capitalized terms) from contract text. */
 function extractDefinedParties(contractText: string): string[] {
   const set = new Set<string>();
-  const re = /[("“]([A-Z][A-Za-z0-9\s&'/.-]{2,60})[)"”]/g;
+  // Accept straight, curly, and single quotes as party delimiters so preambles
+  // like `Acquiror Inc. ('Buyer')` are captured (previously only " or “ were).
+  const re = /[("“'‘]([A-Z][A-Za-z0-9\s&'/.-]{2,60})[)"”'’]/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(contractText)) !== null) set.add(m[1].trim());
   return [...set];
@@ -471,6 +479,11 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
   console.log(`[PIPELINE] Analysis #${id} → step=adjudicator`);
   let reportMarkdown = await withRetry(() => runAdjudicator(client, llm1Raw, llm2Raw, contractText, perspective), "Adjudicator");
   await writeAudit({ action: "adjudicator", resourceType: "analysis", resourceId: id, metadata: { model: "adjudicator", status: "complete", ms: Date.now() - adjStart } });
+
+  // Hoisted across the reconciler + deterministic-module try blocks so the
+  // structural gates (Stage 8/9 readiness) can read deal classification.
+  let dealType: ReconcilerInput["dealType"] = "EQUITY_PURCHASE";
+  let pipelineReadiness: { status: string; capsScore: boolean; blockers: string[]; conditions: string[] } | null = null;
   console.log(`[LLM TIMING] Total pipeline (LLM net + 25s sleeps): ${Date.now() - _pipelineStart}ms`);
 
   // Scaffolding leak guard
@@ -480,7 +493,7 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
   }
   reportMarkdown = reportCleaned;
 
-  const meta = parseReportMetadata(reportMarkdown);
+  let meta = parseReportMetadata(reportMarkdown);
 
   // Cross-layer reconciler
   try {
@@ -512,7 +525,7 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
     const bumpMatch = reportMarkdown.match(/Net tier adjustment:\s*\+?(\d+)/i);
     const netTierBump = bumpMatch?.[1] != null ? parseInt(bumpMatch[1], 10) : 0;
 
-    const dealType = (analystJson.deal_type ?? "EQUITY_PURCHASE") as ReconcilerInput["dealType"];
+    dealType = (analystJson.deal_type ?? "EQUITY_PURCHASE") as ReconcilerInput["dealType"];
     const classificationConfidence = (analystJson.classification_confidence ?? "UNKNOWN") as ReconcilerInput["classificationConfidence"];
     const resolved: ResolvedSuppression[] = resolveSuppressions(dealType, classificationConfidence);
 
@@ -585,6 +598,15 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
     regData = reg;
     await writeAudit({ action: "regulatory", resourceType: "analysis", resourceId: id, metadata: { frameworks: reg.frameworks.length } });
 
+    // New structural gates (party integrity, escrow/survival, readiness).
+    const party = runPartyIntegrity(contractText, dealType);
+    const escrowMismatch = detectEscrowSurvivalMismatch(contractText);
+    const readiness = runReadinessGate({
+      partyFindings: party.findings,
+      undefinedControllingTerms: kg.undefinedControllingTerms,
+      text: contractText,
+    });
+
     const litCtx = {
       hasIndemnificationCap: /\bcap\b/i.test(contractText) && /indemnif/i.test(contractText),
       hasEscrow: /\bescrow\b/i.test(contractText),
@@ -592,16 +614,30 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
       hasDisclosureSchedules: /\bschedule\b|\bdisclosure\s+schedules?\b/i.test(contractText),
       hasFinancialStatements: /\bfinancial\s+statements?\b/i.test(contractText),
       hasRegulatoryFilings: /\bhsr\b|\bcfius\b|\bregulatory\s+filing/i.test(contractText),
+      // Unify Stage 9 with synthesis-level findings so the litigation table
+      // cannot contradict the risk engine (Stage 9 vs Synthesis fix).
+      elevations: deriveLitigationElevations({
+        escrowSurvivalMismatch: escrowMismatch,
+        statutoryMergerNoEnvRep: party.isMerger && !/\benvironmental\b[^.]{0,40}\brepresent/i.test(contractText),
+        earnoutBuyerSoleDiscretion: /\bearnout\b/i.test(contractText) && /\bsole\s+discretion\b/i.test(contractText),
+        undefinedControllingTerms: kg.undefinedControllingTerms,
+        ghostObligor: party.findings.some((f) => f.category === "ghost_obligor"),
+      }),
     };
     const lit = runLitigationRisk(contractText, litCtx);
     litData = lit;
     await writeAudit({ action: "litigation", resourceType: "analysis", resourceId: id, metadata: { areas: lit.areas.length } });
 
+    moduleSections.push(renderReadinessGate(readiness));
+    moduleSections.push(renderPartyIntegrity(party));
     moduleSections.push(renderRegulatory(reg));
     moduleSections.push(renderCrossDoc(cross));
     moduleSections.push(renderLitigation(lit));
     moduleSections.push(renderKnowledgeGraph(kg));
     moduleSections.push(renderRedFlag(rf));
+
+    // Stash readiness for Stage 12 score capping.
+    pipelineReadiness = readiness;
 
     reportMarkdown += "\n\n" + moduleSections.join("\n");
   } catch (err) {
@@ -697,8 +733,11 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
   // ── Strip pipeline-internal annotations before persistence ──────────────────
   // Removes tags like "FINDING-021", "Agent 1", "true_missed_item", "L3-A",
   // "RISK-ASIS-...", "★ NEW", and the injected "[RECONCILER] ..." line so they
-  // never reach a client deliverable.
+  // never reach a client deliverable. Also normalizes sensational terminology
+  // ("Buyer Suicide Pill" → "Liability–Recourse Mismatch", "Roach Motel" →
+  // "Asymmetrical Termination Trap") and verifies scorecard consistency.
   reportMarkdown = stripInternalTags(reportMarkdown);
+  reportMarkdown = sanitizeTerminology(reportMarkdown);
 
   // ── Deterministic QA guardrail (mechanical prompt-compliance checks) ────────
   try {
@@ -713,10 +752,37 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
       console.warn(`[QA GUARDRAIL] ${qa.issues.length} advisory issue(s) on analysis ${id}:`);
       for (const i of qa.issues) console.warn(`  - ${i}`);
     }
+    const scorecardIssues = checkScorecardConsistency(reportMarkdown);
+    if (scorecardIssues.length) qa.issues.push(...scorecardIssues);
     const qaMd = renderQaGuardrail(qa.issues);
     if (qaMd) reportMarkdown += "\n\n" + qaMd;
   } catch (err) {
     console.warn("[QA GUARDRAIL] Could not run QA guardrail:", err);
+  }
+
+  // Re-parse metadata AFTER the sanity-revision pass so persisted score /
+  // recommendation reflect the final (possibly revised) report. Previously meta
+  // was parsed once before revision, leaving the DB with stale values.
+  meta = parseReportMetadata(reportMarkdown);
+
+  // Execution-readiness gate: a FAIL (ghost obligor, missing operative
+  // documents, undefined controlling terms) caps the overall risk score and
+  // forces a non-unqualified recommendation — you cannot score a deal
+  // "execution-ready" when its obligor does not exist or the Plan of Merger is
+  // absent. See STRUCTURAL GATE C.
+  if (pipelineReadiness?.capsScore) {
+    const capped = Math.min(meta.score, 34);
+    if (capped !== meta.score) {
+      console.warn(`[READINESS GATE] Capping score ${meta.score} → ${capped} (execution-blocking defects).`);
+      meta.score = capped;
+    }
+    if (meta.recommendation.toUpperCase().includes("PROCEED") && !meta.recommendation.toUpperCase().includes("CONDITION") && !meta.recommendation.toUpperCase().includes("DO NOT")) {
+      meta.recommendation = "PROCEED_WITH_CONDITIONS";
+    }
+    if (pipelineReadiness.blockers.length) {
+      const banner = `> **⚠ EXECUTION READINESS GATE — FAIL.** This agreement is not execution-ready as drafted. Resolve the following before any signature:\n>\n${pipelineReadiness.blockers.map((b) => `> - ${b}`).join("\n")}\n`;
+      reportMarkdown = banner + "\n\n" + reportMarkdown;
+    }
   }
 
   await db.update(schema.analyses).set({

@@ -158,6 +158,26 @@ deductions:
       severity: "high"
       per_schedule_missing: 1  # additional per schedule (capped at base deduction)
 
+  # Party / obligor integrity + execution-readiness gate (parity with the TS
+  # runPartyIntegrity / runReadinessGate). A readiness block caps the score.
+  party_integrity:
+    ghost_obligor:
+      deduction: 30
+      description: "Obligation imposed on a party never defined or signed — indemnity illusory"
+      severity: "critical"
+    indemnification_procedures:
+      deduction: 15
+      description: "Indemnification referenced but no claim/defense/settlement procedures"
+      severity: "high"
+    escrow_survival_mismatch:
+      deduction: 20
+      description: "Escrow releases before indemnity survival period"
+      severity: "high"
+    undefined_controlling_terms:
+      deduction: 15
+      description: "Controlling defined terms referenced but never defined"
+      severity: "high"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DETECTION PATTERNS  (compiled to regex at runtime)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -175,6 +195,10 @@ detection_patterns:
         - "aggregate liability.*shall not exceed"
         - "maximum liability"
         - "cap on (?:liability|indemnification)"
+        - "\\$\\s?[\\d,.]+\\s*(?:million|billion|mm|m|bn)?\\s*cap"
+        - "cap(?:ped)?(?: of)?\\s*\\$\\s?[\\d,.]+"
+        - "shall not exceed\\s*\\$\\s?[\\d,.]+"
+        - "limited to\\s*\\$\\s?[\\d,.]+"
     basket_patterns:
       patterns:
         - "\\bbasket\\b"

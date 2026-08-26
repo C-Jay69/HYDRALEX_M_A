@@ -184,3 +184,59 @@ export function renderQaGuardrail(issues: string[]): string {
   for (const i of issues) lines.push(`- ${i}`);
   return lines.join("\n");
 }
+
+/**
+ * Sensational / non-standard terminology → precise M&A vernacular. The external
+ * reviews flagged "Buyer Suicide Pill" (a poison pill is a takeover defense,
+ * not an indemnity-recourse mismatch) and "Roach Motel" as analyst coinage that
+ * undermines credibility. These are replaced everywhere they appear.
+ */
+export const TERMINOLOGY_REPLACEMENTS: [RegExp, string][] = [
+  [/\bBuyer\s+Suicide\s+Pill\b/gi, "Liability–Recourse Mismatch"],
+  [/\bsuicide\s+pill\b/gi, "liability-recourse mismatch"],
+  [/\bRoach\s+Motel\b/gi, "Asymmetrical Termination Trap"],
+];
+
+/** Replace sensational terminology in client-facing markdown. Idempotent. */
+export function sanitizeTerminology(markdown: string): string {
+  let out = markdown;
+  for (const [re, repl] of TERMINOLOGY_REPLACEMENTS) out = out.replace(re, repl);
+  return out;
+}
+
+/**
+ * Scorecard consistency check: the report's stated score, risk level, and
+ * recommendation must agree with the L3-C mapping the prompt mandates
+ * (0-33 → CRITICAL/DO NOT PROCEED; 34-66 → MODERATE/PROCEED WITH CONDITIONS;
+ * 67-100 → LOW/PROCEED). Flags any drift between the three fields for human
+ * review (advisory, does not recompute the score).
+ */
+export function checkScorecardConsistency(report: string): string[] {
+  const issues: string[] = [];
+  const scoreM = report.match(/risk\s+score\s*[:\s]+\*\*?(\d{1,3})\*\*?/i) ||
+    report.match(/risk\s+score[:\s]+(\d{1,3})/i);
+  const levelM = report.match(/risk\s+level\s*[:\s]+\*\*?(CRITICAL|HIGH|MODERATE|LOW)\*\*?/i) ||
+    report.match(/risk\s+level[:\s]+(CRITICAL|HIGH|MODERATE|LOW)/i);
+  const recM = report.match(/recommendation\s*[:\s]+\*\*?([^\n*]+?)\*\*?/i) ||
+    report.match(/recommendation[:\s]+([^\n]+)/i);
+
+  if (!scoreM || !levelM || !recM) return issues; // partial report; nothing to check
+
+  const score = parseInt(scoreM[1], 10);
+  const level = levelM[1].toUpperCase();
+  const rec = recM[1].toUpperCase();
+
+  const expectedLevel = score <= 33 ? "CRITICAL" : score <= 66 ? "MODERATE" : "LOW";
+  if (level !== expectedLevel) {
+    issues.push(
+      `Scorecard drift: score ${score} implies risk level ${expectedLevel}, but the report states ${level}. Reconcile the two.`
+    );
+  }
+  const expectedRec = score <= 33 ? "DO NOT PROCEED" : score <= 66 ? "PROCEED WITH CONDITIONS" : "PROCEED";
+  if (!rec.includes(expectedRec)) {
+    issues.push(
+      `Scorecard drift: score ${score} implies recommendation "${expectedRec}", but the report states "${rec.trim()}". Reconcile the two.`
+    );
+  }
+  return issues;
+}

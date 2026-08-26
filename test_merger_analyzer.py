@@ -58,6 +58,8 @@ class TestMergerRiskAnalyzer(unittest.TestCase):
     def test_well_drafted_agreement(self):
         """Test Case 2: Properly drafted agreement – expected score 75-85"""
         text = """
+        THIS AGREEMENT is made by and among Target Company Inc. ("Seller") and Acquiror Inc. ("Buyer").
+
         ARTICLE I: DEFINITIONS
         "Material Adverse Effect" means any change that results in a reduction of 15% or more.
         "Knowledge" means actual knowledge of the CEO and CFO after reasonable inquiry.
@@ -165,8 +167,8 @@ class TestMergerRiskAnalyzer(unittest.TestCase):
     def test_gold_standard_agreement(self):
         """Test Case 5: Gold standard – expected score 90-100"""
         text = """
-        THIS MERGER AGREEMENT is made as of [Date].
-        
+        THIS MERGER AGREEMENT is made as of [Date], by and among Acquiror Inc. ("Buyer") and Target Company Inc. ("Seller").
+
         ARTICLE I: DEFINITIONS
         "Material Adverse Effect" means any event that causes a reduction of 10% or more.
         "Knowledge" means actual knowledge after due inquiry of officers listed on Schedule A.
@@ -190,10 +192,16 @@ class TestMergerRiskAnalyzer(unittest.TestCase):
         Seller shall indemnify Buyer for losses exceeding $500,000 (basket) up to $15M cap.
         Fraud and fundamental reps: No cap, no basket.
         Survival: 18 months for general reps, 6 years for fundamental reps and tax.
+        Indemnification procedures: The indemnified party shall give written notice of any
+        claim within 30 days of becoming aware. The indemnifying party may control the
+        defense of third-party claims, and any settlement requires the indemnifying
+        party's prior written consent (not to be unreasonably withheld).
         
         ARTICLE V: COVENANTS
         Target shall operate in ordinary course pending Closing.
         Seller shall provide access to books and records.
+        Assignment of contracts: Buyer shall have 30 days to review and object to any
+        proposed assignment of a material Target contract.
         
         ARTICLE VI: CLOSING CONDITIONS
         Outside Closing Date: 6 months from signing.
@@ -209,6 +217,9 @@ class TestMergerRiskAnalyzer(unittest.TestCase):
         Counterparts. Severability. Notices.
         
         Schedules: All schedules attached and completed.
+        Schedule A: List of Officers — the Chief Executive Officer and Chief Financial Officer.
+        Disclosure Schedules: Schedules 1 through 5 attached, setting forth all exceptions
+        to the representations and warranties.
         """
         
         result = self.analyzer.analyze(text, "gold_standard.txt")
