@@ -2,13 +2,19 @@
 # Test suite for MergerRiskAnalyzer
 
 import unittest
+from pathlib import Path
 from merger_risk_analyzer import MergerRiskAnalyzer, AnalysisResult
+
+# Single source of truth for the scoring config lives in the python-engine package.
+_CANONICAL_CONFIG = str(
+    Path(__file__).parent / "packages" / "python-engine" / "merger_scoring_config.yaml"
+)
 
 class TestMergerRiskAnalyzer(unittest.TestCase):
     
     @classmethod
     def setUpClass(cls):
-        cls.analyzer = MergerRiskAnalyzer("merger_scoring_config.yaml")
+        cls.analyzer = MergerRiskAnalyzer(_CANONICAL_CONFIG)
     
     # ============================================================
     # TEST CASE 1: Skeleton/Tier 1 Draft (like your sample)
@@ -58,36 +64,43 @@ class TestMergerRiskAnalyzer(unittest.TestCase):
     def test_well_drafted_agreement(self):
         """Test Case 2: Properly drafted agreement – expected score 75-85"""
         text = """
-        THIS AGREEMENT is made by and among Target Company Inc. ("Seller") and Acquiror Inc. ("Buyer").
+        THIS AGREEMENT is dated as of March 1, 2026, by and among Target Company Inc., a Delaware corporation ("Seller") and Acquiror Inc., a Delaware corporation ("Buyer").
 
         ARTICLE I: DEFINITIONS
         "Material Adverse Effect" means any change that results in a reduction of 15% or more.
         "Knowledge" means actual knowledge of the CEO and CFO after reasonable inquiry.
-        
+        "Closing Date" means the date on which the Closing occurs.
+
         ARTICLE II: PURCHASE PRICE AND EARN OUT
+        Purchase Price: $100,000,000.
         Earnout: $10,000,000 payable if Target achieves Revenue of $50M in FY2025.
         Disputes shall be resolved by independent accountant at Big 4 firm.
-        
+
         ARTICLE III: REPRESENTATIONS AND WARRANTIES
         Target represents and warrants that its financial statements are accurate in all material respects.
-        Survival: 18 months from Closing Date.
-        
+        The representations and warranties shall survive for 18 months from the Closing Date.
+        Target represents that all required tax returns have been filed and all taxes have been paid.
+
         ARTICLE IV: INDEMNIFICATION
         Seller shall indemnify Buyer for losses exceeding $250,000 (basket) up to $10M cap.
         Fraud carve-out: No cap for fraudulent misrepresentation.
-        
+        Survival: 18 months from Closing Date.
+        The indemnifying party shall provide written notice of any claim within 30 days; the indemnifying party may control the defense of third-party claims, and any settlement requires the indemnifying party's prior written consent.
+
         ARTICLE V: COVENANTS
         Target shall operate in the ordinary course pending Closing.
-        
+
         ARTICLE VI: CLOSING CONDITIONS
         Outside Closing Date: March 31, 2026.
-        
+
         ARTICLE VII: TERMINATION
         Either party may terminate if Closing not occurred by Outside Date.
-        
+
         ARTICLE VIII: GENERAL PROVISIONS
         This Agreement constitutes the entire agreement between the parties.
         Governing Law: Delaware.
+        Amendment; Waiver: This Agreement may be amended only by a written instrument signed by both parties, and no waiver is effective unless in writing.
+        Notices: All notices under this Agreement shall be in writing and delivered to the addresses set forth above.
         """
         
         result = self.analyzer.analyze(text, "well_drafted.txt")
@@ -167,7 +180,7 @@ class TestMergerRiskAnalyzer(unittest.TestCase):
     def test_gold_standard_agreement(self):
         """Test Case 5: Gold standard – expected score 90-100"""
         text = """
-        THIS MERGER AGREEMENT is made as of [Date], by and among Acquiror Inc. ("Buyer") and Target Company Inc. ("Seller").
+        THIS MERGER AGREEMENT is dated as of March 1, 2026, by and among Acquiror Inc., a Delaware corporation ("Buyer") and Target Company Inc., a Delaware corporation ("Seller").
 
         ARTICLE I: DEFINITIONS
         "Material Adverse Effect" means any event that causes a reduction of 10% or more.
@@ -214,7 +227,9 @@ class TestMergerRiskAnalyzer(unittest.TestCase):
         
         ARTICLE VIII: GENERAL
         Entire agreement. Governing law: Delaware. Arbitration: Wilmington, DE.
-        Counterparts. Severability. Notices.
+        Counterparts. Severability.
+        Amendment; Waiver: This Agreement may be amended only by a written instrument signed by both parties, and no waiver is effective unless in writing.
+        Notices: All notices under this Agreement shall be in writing and delivered to the parties at their respective addresses.
         
         Schedules: All schedules attached and completed.
         Schedule A: List of Officers — the Chief Executive Officer and Chief Financial Officer.
