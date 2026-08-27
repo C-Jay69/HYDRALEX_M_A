@@ -105,7 +105,10 @@ describe("v2 structural gates — reviewer stress contract", () => {
     const earn = lit.areas.find((a) => a.area === "Earnout Disputes");
     expect(fraud!.level).toBe("high");
     expect(env!.level).toBe("moderate");
-    expect(earn!.level).toBe("moderate");
+    // Buyer-controlled earnout → elevated to HIGH with HIGH confidence (the
+    // substantive analysis and Stage 9 must agree, not contradict).
+    expect(earn!.level).toBe("high");
+    expect(earn!.confidence).toBe("high");
   });
 });
 

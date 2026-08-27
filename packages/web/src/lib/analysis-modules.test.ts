@@ -10,6 +10,7 @@ import {
   renderRegulatory,
   runLitigationRisk,
   renderLitigation,
+  deriveLitigationElevations,
   runPartyIntegrity,
   analyzeAppraisalRights,
   renderAppraisalRights,
@@ -205,4 +206,71 @@ test("HSR/Antitrust: large merger triggers LIKELY filing", () => {
   const hsr = runHsrAntitrust("Buyer acquires Target for $200,000,000 in a statutory merger.", "STATUTORY_MERGER");
   expect(hsr.isCoveredTransaction).toBe(true);
   expect(hsr.hsrFilingRequired).toBe("LIKELY");
+});
+
+// ── STRESS FIXTURE 01 (CLEAN) — used for assessment-driven regression tests ──
+const CLEAN = `
+AGREEMENT AND PLAN OF MERGER
+This Agreement and Plan of Merger (the "Agreement") is made between Acquiror Inc. ("Buyer") and TargetCo Inc. ("Target").
+1. THE MERGER
+Target shall merge with and into Buyer pursuant to Section 251 of the Delaware General Corporation Law, with Buyer continuing as the surviving corporation (the "Merger"). The Plan of Merger is attached as Exhibit A. At the Effective Time, all assets, rights, and liabilities of Target shall vest in the surviving corporation by operation of law.
+2. PURCHASE PRICE
+Total consideration shall be $50,000,000: (a) $42,000,000 in cash at Closing; (b) $5,000,000 deposited into escrow; and (c) up to $3,000,000 as Earnout Consideration. The Earnout shall be payable if the surviving entity achieves Adjusted EBITDA of no less than $8,000,000. "Adjusted EBITDA" means net income before interest, taxes, depreciation, and amortization, computed in accordance with GAAP applied consistently with Target's audited historical financial statements. Buyer covenants to operate the business in good faith and shall not take any action the primary purpose of which is to frustrate the Earnout. Buyer shall deliver an Earnout Statement within sixty (60) days following the Earnout Period; disputes shall be referred to an independent nationally recognized accounting firm.
+3. ESCROW & WORKING CAPITAL
+$5,000,000 shall be held in escrow for eighteen (18) months. The Purchase Price shall be adjusted dollar-for-dollar for the difference between Closing Net Working Capital and a target of $4,000,000, determined under a defined true-up procedure.
+4. REPRESENTATIONS AND WARRANTIES
+Target represents and warrants as to organization, authority, capitalization, financial statements, taxes, litigation, compliance, and intellectual property. "Knowledge" means the actual knowledge of the named executive officers.
+5. INDEMNIFICATION
+Seller shall indemnify Buyer for breaches of representations, warranties, and covenants, for pre-Closing taxes, and for specified matters. General representations survive eighteen (18) months; fundamental and tax representations survive six (6) years. The aggregate cap for general representation claims is 10% of the Purchase Price; fundamental and tax claims are capped at 100%. A deductible basket of 0.75% applies to general claims. The escrow is the first source of recovery.
+6. MATERIAL ADVERSE EFFECT
+"Material Adverse Effect" is defined with customary carve-outs, subject to a disproportionate-effect carve-back. A bring-down of representations and the absence of a Material Adverse Effect are conditions to Closing.
+7. TERMINATION
+This Agreement may be terminated by mutual written consent; by either party upon an uncured material breach; or by either party if the Closing has not occurred by the Outside Date, except this right is unavailable to a party whose breach was the primary cause. Customary termination fees apply to each party symmetrically.
+8. GOVERNING LAW
+This Agreement is governed by the laws of the State of Delaware.
+IN WITNESS WHEREOF, the parties have executed this Agreement.
+Buyer Co: _________________
+Target Co: _________________
+`;
+
+test("Litigation cross-feed: earnout + undefined working capital elevate Stage 9 (fix 2.3)", () => {
+  const elevations = deriveLitigationElevations({
+    earnoutBuyerControlsCalc: true,
+    undefinedControllingTerms: ["Net Working Capital"],
+    ghostObligor: false,
+  });
+  const lit = runLitigationRisk(CLEAN, { elevations });
+  const earnout = lit.areas.find((a) => a.area === "Earnout Disputes");
+  expect(earnout?.level).toBe("high");
+  expect(earnout?.confidence).toBe("high");
+  const ppa = lit.areas.find((a) => a.area === "Purchase Price Adjustment Disputes");
+  expect(["moderate", "high"]).toContain(ppa?.level);
+  expect(ppa?.confidence).toBe("high");
+});
+
+test("Knowledge Graph: party aliases merge + relationships extracted (fix 2.8)", () => {
+  const kg = runKnowledgeGraph(CLEAN);
+  const partyNames = kg.nodes.filter((n) => n.entityType === "party").map((n) => n.name);
+  expect(partyNames).toContain("Buyer");
+  expect(partyNames).toContain("Target");
+  expect(partyNames).not.toContain("Acquiror Inc");
+  expect(partyNames).not.toContain("TargetCo Inc");
+  expect(partyNames).not.toContain("Buyer Co");
+  expect(kg.edges.some((e) => e.relationship === "merges_with_into" || e.relationship === "executes")).toBe(true);
+});
+
+test("Red Flag depth: termination fee, specified matters, WC timeline, EBITDA GAAP (fixes 2.4-2.10)", () => {
+  const rf = runRedFlagEngine(CLEAN);
+  const cats = rf.flags.map((f) => f.category);
+  expect(cats).toContain("Termination Fee Undefined (Likely Unenforceable)");
+  expect(cats).toContain("Undefined 'Specified Matters' Placeholder");
+  expect(cats).toContain("Working Capital True-Up Timeline Missing");
+  expect(cats).toContain("Adjusted EBITDA Defined as GAAP (Contradictory)");
+});
+
+test("Fiduciary Duty: clean merger missing safeguards is HIGH, never CRITICAL (fix 2.2)", () => {
+  const fid = runFiduciaryDuty(CLEAN, "STATUTORY_MERGER");
+  expect(fid.isApplicable).toBe(true);
+  expect(fid.riskLevel).toBe("HIGH");
+  expect(fid.riskLevel).not.toBe("CRITICAL");
 });

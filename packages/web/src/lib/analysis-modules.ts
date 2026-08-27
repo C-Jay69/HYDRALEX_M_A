@@ -283,6 +283,86 @@ export function runKnowledgeGraph(text: string): KGResult {
     if (ctRe.test(text)) undefinedControllingTerms.push(ct);
   }
 
+  // ── Alias resolution & relationship extraction (review 2.8) ────────────────
+  // Merge party-name variants ("Acquiror Inc", "Buyer", "Buyer Co") into one
+  // canonical party, and extract structural relationships (execution,
+  // merger) so the graph is not a flat list of disconnected entities.
+  const normAlias = (s: string) => s.toLowerCase().replace(/\.$/, "").trim();
+  const aliasMap = new Map<string, string>();
+  const parenRe = /([A-Z][\w.&,'-]*(?:\s+[A-Z][\w.&,'-]*)*)\s*\(?\s*[“"]([A-Za-z][\w' -]*)[”"]\s*\)?/g;
+  let pm: RegExpExecArray | null;
+  while ((pm = parenRe.exec(text)) !== null) {
+    const full = pm[1].trim().replace(/\.$/, "");
+    const short = pm[2].trim().replace(/\.$/, "");
+    if (normAlias(full) === normAlias(short)) continue;
+    const canon = full.length <= short.length ? full : short;
+    aliasMap.set(normAlias(full), canon);
+    aliasMap.set(normAlias(short), canon);
+  }
+  const sigRe = /\b((?:Buyer|Target|Seller|Acquiror|Company)[A-Za-z]*\s*Co)\s*:/g;
+  let sg: RegExpExecArray | null;
+  while ((sg = sigRe.exec(text)) !== null) {
+    const base = sg[1].replace(/Co$/i, "").trim();
+    if (base) aliasMap.set(normAlias(sg[1]), base);
+  }
+
+  if (aliasMap.size) {
+    const merged = new Map<string, KGNodeT>();
+    const kept: KGNodeT[] = [];
+    for (const n of nodes) {
+      if (n.entityType !== "party") { kept.push(n); continue; }
+      const canon = aliasMap.get(normAlias(n.name));
+      if (!canon || normAlias(canon) === normAlias(n.name)) { kept.push(n); continue; }
+      const cId = `party:${canon.toLowerCase().replace(/\s+/g, "_")}`;
+      let c = merged.get(cId);
+      if (!c) {
+        c = nodeIndex.get(cId) ?? { id: cId, name: canon, entityType: "party", occurrences: 0 };
+        merged.set(cId, c);
+        nodeIndex.set(cId, c);
+      }
+      c.occurrences += n.occurrences;
+    }
+    for (const c of merged.values()) kept.push(c);
+    // De-duplicate by id (a canonical node may already be in `kept`).
+    const finalNodes: KGNodeT[] = [];
+    const seenIds = new Set<string>();
+    for (const n of kept) {
+      if (seenIds.has(n.id)) continue;
+      // Drop party nodes whose name is corrupted across a line break (extractor
+      // artifact, e.g. "Agreement.\nBuyer Co") — they are not real parties.
+      if (n.entityType === "party" && n.name.includes("\n")) continue;
+      seenIds.add(n.id);
+      finalNodes.push(n);
+    }
+    nodes.length = 0;
+    nodes.push(...finalNodes);
+  }
+
+  const partyId = (name: string) => `party:${name.toLowerCase().replace(/\s+/g, "_")}`;
+  const seenEdges = new Set<string>();
+  const addEdge = (s: string, t: string, rel: string) => {
+    const key = `${s}|${t}|${rel}`;
+    if (seenEdges.has(key)) return;
+    seenEdges.add(key);
+    edges.push({ source: s, target: t, relationship: rel });
+  };
+  const signRe = /\b((?:Buyer|Target|Seller|Acquiror|Company|Party)[A-Za-z]*\s*(?:Co)?)\s*:\s*_{2,}/g;
+  let sn: RegExpExecArray | null;
+  while ((sn = signRe.exec(text)) !== null) {
+    const p = sn[1].trim().replace(/\s*Co$/i, "");
+    const canon = aliasMap.get(normAlias(p)) ?? p;
+    addEdge(partyId(canon), "document:primary", "executes");
+  }
+  const mergeRe = /\b([A-Z][\w.&,'-]*(?:\s+[A-Z][\w.&,'-]*)*)\s+shall\s+merge\s+with\s+and\s+into\s+([A-Z][\w.&,'-]*(?:\s+[A-Z][\w.&,'-]*)*)/g;
+  let mn: RegExpExecArray | null;
+  while ((mn = mergeRe.exec(text)) !== null) {
+    const a = mn[1].trim();
+    const b = mn[2].trim();
+    const ca = aliasMap.get(normAlias(a)) ?? a;
+    const cb = aliasMap.get(normAlias(b)) ?? b;
+    addEdge(partyId(ca), partyId(cb), "merges_with_into");
+  }
+
   const byType: Record<string, number> = {};
   for (const n of nodes) byType[n.entityType] = (byType[n.entityType] || 0) + 1;
 
@@ -352,6 +432,16 @@ export function renderKnowledgeGraph(kg: KGResult): string {
   if (top.length) {
     lines.push("**Key entities (by frequency):**");
     lines.push(mdTable(["Entity", "Type", "Occurrences"], top.map((n) => [n.name, n.entityType, String(n.occurrences)])));
+    lines.push("");
+  }
+
+  const relEdges = kg.edges.filter((e) => e.source !== e.target).slice(0, 12);
+  if (relEdges.length) {
+    const short = (s: string) => s.replace(/^.*:/, "");
+    lines.push("**Key relationships:**");
+    lines.push(mdTable(["From", "Relationship", "To"], relEdges.map((e) => [short(e.source), e.relationship, short(e.target)])));
+    lines.push("");
+    lines.push("_Alias resolution applied: signature-line and parenthetical party variants (e.g. \"Acquiror Inc\" / \"Buyer Co\" / \"Buyer\") are merged to a single canonical party._");
     lines.push("");
   }
   return lines.join("\n");
@@ -711,7 +801,7 @@ const RED_FLAG_RULES: FlagRule[] = [
   {
     category: "Tax",
     severity: "moderate",
-    patterns: [/\bSection\s+1060\b/i, /\btax\s+allocation\b/i, /\btax\s+withholding\b/i, /\bSection\s+338\b/i],
+    patterns: [/\bSection\s+1060\b/i, /\btax\s+allocation\b/i, /\btax\s+withholding\b/i],
   },
   {
     category: "Employment",
@@ -914,7 +1004,7 @@ export function runRedFlagEngine(text: string): { flags: RedFlagT[] } {
     flags.push({
       category: "No Disclosure Schedule Mechanism",
       severity: "moderate",
-      evidence: "Representations & Warranties present but no disclosure-schedule qualification mechanism found.",
+      evidence: "Representations & Warranties present but no disclosure-schedule qualification mechanism found. Because every representation in §4 is therefore unqualified (no exceptions carved out), this is currently Buyer-favorable in the short term but signals an incomplete draft: in a real closing, disclosure schedules would qualify many of these reps, and their absence means Buyer cannot yet assess what exceptions Seller will take. Thread this through the R&W analysis — an unqualified rep set with no schedule is a drafting gap, not a final allocation.",
       location: "contract",
     });
   }
@@ -968,7 +1058,7 @@ export function runRedFlagEngine(text: string): { flags: RedFlagT[] } {
     flags.push({
       category: "Undefined 'Specified Matters' Placeholder",
       severity: "high",
-      evidence: "Indemnity/exceptions reference 'specified matters' that are never defined in the provided text — a material term is left open.",
+      evidence: "Indemnity/exceptions reference 'specified matters' that are never defined in the provided text — a material term is left open. 'Specified matters' typically denote known pre-closing liabilities (pending litigation, tax exposure, environmental issues) the Seller specifically agrees to cover regardless of the general basket/cap. If undefined, (1) known liabilities Seller intended to cover specifically may go uncommitted, and (2) Buyer is left relying on the general indemnity for risks that should carry specific, often uncapped, coverage. The disclosure schedule (not provided) likely defines these — their absence means a potentially significant indemnity category is unassessable.",
       location: "contract",
     });
   }
@@ -988,6 +1078,62 @@ export function runRedFlagEngine(text: string): { flags: RedFlagT[] } {
       severity: "high",
       evidence:
         "Indemnification is referenced but no notice-of-claim, defense-control, or settlement-consent procedure is specified — recoverability mechanics are undefined.",
+      location: "contract",
+    });
+  }
+
+  // (e) Termination fee referenced without an amount — likely unenforceable as
+  //     a liquidated-damages clause and a missed negotiation anchor (review 2.4).
+  const hasTermFee = /\btermination\s+fees?\b|\breverse\s+termination\s+fees?\b/i.test(text);
+  const hasTermFeeAmount = /\b(?:termination\s+fees?|reverse\s+termination\s+fees?)\b[^.]{0,90}\$\s?[\d,]+/i.test(text);
+  if (hasTermFee && !hasTermFeeAmount) {
+    flags.push({
+      category: "Termination Fee Undefined (Likely Unenforceable)",
+      severity: "high",
+      evidence:
+        "Termination fee referenced without a stated dollar amount (e.g. 'customary termination fees apply'). Under Delaware law a liquidated-damages clause must be a reasonable forecast of actual damages; an undefined 'customary' fee is likely unenforceable as written. For a deal of this size, market termination fees typically run 2–4% of total consideration — anchor negotiations to that band. Distinguish a termination fee (paid by the party that walks) from a reverse termination fee (paid by Buyer if its financing fails).",
+      location: "contract",
+    });
+  }
+
+  // (f) Working-capital true-up present but missing the timeline (review 2.7).
+  const hasWcAdj = /\bworking capital\b/i.test(text) && /(?:adjustment|true-?up|peg|target)/i.test(text);
+  const hasWcTimeline =
+    /\b(?:within|no later than|determined?\s+within)\s*\d+\s*(?:days|business days)\b/i.test(text) ||
+    /\bdispute\s+resolution\b/i.test(text);
+  if (hasWcAdj && !hasWcTimeline) {
+    flags.push({
+      category: "Working Capital True-Up Timeline Missing",
+      severity: "moderate",
+      evidence:
+        "Working-capital adjustment mechanism referenced but no timeline (e.g. final determination within 90 days), interest accrual, or dispute-resolution deadline found — Buyer could delay final determination indefinitely with no trigger for escalation.",
+      location: "contract",
+    });
+  }
+
+  // (g) Adjusted EBITDA defined 'in accordance with GAAP' — internally
+  //     contradictory; EBITDA is a non-GAAP measure (review 2.10).
+  const hasEbitdaGaap = /\badjusted\s+ebitda\b/i.test(text) && /\bgaap\b/i.test(text);
+  if (hasEbitdaGaap) {
+    flags.push({
+      category: "Adjusted EBITDA Defined as GAAP (Contradictory)",
+      severity: "moderate",
+      evidence:
+        "Adjusted EBITDA is defined as 'computed in accordance with GAAP,' but EBITDA is a non-GAAP measure — GAAP does not define it. The definition omits the permitted adjustments, whether they are symmetric (add-backs and add-downs), and who approves them — a primary earnout-dispute vector.",
+      location: "contract",
+    });
+  }
+
+  // (h) Section 338 only makes sense in specific structures; in a C-corp
+  //     statutory merger it is generally unavailable (review 2.9).
+  const isMergerDoc = /\bmerger\b/i.test(text);
+  const isScorp = /\bs[- ]?corp/i.test(text);
+  if (/\bSection\s+338\b/i.test(text) && isMergerDoc && !isScorp) {
+    flags.push({
+      category: "Section 338 Not Available in C-Corp Merger",
+      severity: "moderate",
+      evidence:
+        "A Section 338 election is generally unavailable in a direct statutory merger of a C-corporation. Section 338(h)(10) may apply only if Target is an S-corporation or a subsidiary in a qualified structure; if asset-purchase tax treatment is desired, confirm eligibility before relying on a bare Section 338 reference.",
       location: "contract",
     });
   }
@@ -1483,6 +1629,8 @@ export interface LitigationElevation {
   area: string;
   to: RiskLevel;
   reason: string;
+  /** Confidence to surface for synthesis-driven elevations (defaults to high). */
+  confidence?: "high" | "medium" | "low";
 }
 
 export function runLitigationRisk(
@@ -1547,7 +1695,7 @@ export function runLitigationRisk(
       if (elev.area !== rule.area) continue;
       if (LEVEL_RANK[elev.to] > LEVEL_RANK[level]) {
         level = elev.to;
-        confidence = "medium";
+        confidence = elev.confidence ?? "high";
       }
       riskDrivers.push(`Synthesis-linked risk: ${elev.reason}`);
       if (!evidence.length) evidence.push(`[Structural analysis] ${elev.reason}`);
@@ -1583,6 +1731,8 @@ export function deriveLitigationElevations(signals: {
   escrowSurvivalMismatch?: { present: boolean; reason?: string };
   statutoryMergerNoEnvRep?: boolean;
   earnoutBuyerSoleDiscretion?: boolean;
+  earnoutBuyerControlsCalc?: boolean;
+  earnoutUndefinedFormula?: boolean;
   undefinedControllingTerms?: string[];
   ghostObligor?: boolean;
 }): LitigationElevation[] {
@@ -1608,17 +1758,30 @@ export function deriveLitigationElevations(signals: {
       reason: "Statutory merger with no environmental representation/indemnity means successor liability is unallocated — treat as conditional pending diligence, not benign.",
     });
   }
-  if (signals.earnoutBuyerSoleDiscretion) {
+  if (signals.earnoutBuyerSoleDiscretion || signals.earnoutBuyerControlsCalc || signals.earnoutUndefinedFormula) {
     elevs.push({
       area: "Earnout Disputes",
-      to: "moderate",
-      reason: "Earnout measured by metrics within buyer's sole discretion creates payment-dispute exposure.",
+      to: "high",
+      confidence: "high",
+      reason: signals.earnoutUndefinedFormula
+        ? "Earnout payable only on an undefined / agreement-to-agree metric — near-certain post-closing valuation dispute."
+        : "Earnout measured or controlled by the buyer (delivery of the statement or sole discretion) creates payment-dispute exposure; the frustration covenant's undefined 'primary purpose' standard compounds it.",
     });
   }
-  if ((signals.undefinedControllingTerms?.length ?? 0) > 0) {
+  const wcTerms = (signals.undefinedControllingTerms ?? []).filter((t) => /working capital|net working capital/i.test(t));
+  if (wcTerms.length) {
+    elevs.push({
+      area: "Purchase Price Adjustment Disputes",
+      to: "moderate",
+      confidence: "high",
+      reason: `Working-capital true-up mechanism references undefined term(s): ${wcTerms.join(", ")}. A non-functional adjustment is a direct purchase-price-dispute vector.`,
+    });
+  }
+  if ((signals.undefinedControllingTerms ?? []).some((t) => !/working capital|net working capital/i.test(t))) {
     elevs.push({
       area: "Tax Disputes",
       to: "moderate",
+      confidence: "high",
       reason: `Controlling defined terms are undefined in the provided text: ${signals.undefinedControllingTerms!.join(", ")}.`,
     });
   }
@@ -1626,6 +1789,7 @@ export function deriveLitigationElevations(signals: {
     elevs.push({
       area: "Fraud Allegations",
       to: "high",
+      confidence: "high",
       reason: "Named indemnitor is not a defined/identified party and does not sign — indemnity (including for fraud) may be illusory.",
     });
   }
@@ -2917,7 +3081,7 @@ export function renderDgclExecutionMechanics(result: DgclMechanicsResult): strin
 //   fiduciary-out, no fairness process) shifts risk onto shareholders.
 // ═════════════════════════════════════════════════════════════════════════════
 
-export type FiduciaryRiskLevel = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "NOT_APPLICABLE";
+export type FiduciaryRiskLevel = "HIGH" | "MEDIUM" | "LOW" | "NOT_APPLICABLE";
 
 export interface FiduciaryDutyResult {
   isApplicable: boolean;
@@ -2989,8 +3153,10 @@ export function runFiduciaryDuty(text: string, dealType?: string): FiduciaryDuty
   }
 
   let riskLevel: FiduciaryRiskLevel = "LOW";
-  if (flags.length >= 3) riskLevel = "CRITICAL";
-  else if (flags.length === 2) riskLevel = "HIGH";
+  // CRITICAL is reserved for findings that make the agreement unenforceable or
+  // expose a party to catastrophic, unmitigated loss (e.g. ghost obligor). Missing
+  // fiduciary governance is a serious but curable gap, so it tops out at HIGH.
+  if (flags.length >= 2) riskLevel = "HIGH";
   else if (flags.length === 1) riskLevel = "MEDIUM";
 
   const rec = riskLevel === "LOW"
