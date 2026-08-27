@@ -865,6 +865,36 @@ VALIDATION INVARIANTS (mandatory sanity-check layer — apply before compiling f
     3. Do NOT flag it as Critical. Do NOT generate a Surgical Edit that neutralizes it.
   UNCONSCIONABILITY PROHIBITION: Do NOT cite unconscionability as a litigation risk in commercial contracts between sophisticated corporate entities. The unconscionability doctrine applies to consumer contracts and adhesion contexts; it is an impractical and near-unwinnable path in arm's-length M&A. Citing it as a "Seller litigation risk" in this context is a hallucinated academic defense that does not reflect commercial litigation reality. If you find yourself about to write "Seller may argue unconscionability," delete it.
 
+• INVARIANT 13 — SINGLE CANONICAL RISK SCORE (fixes header-vs-scorecard divergence):
+  The interaction-weighted risk score is THE single headline number. It MUST appear
+  identically in every location — the report header, the Executive Scorecard, and any
+  summary section. If the Execution-Readiness Gate caps the score (e.g. to 34/100 for
+  execution-blocking defects such as a ghost obligor or a missing Plan of Merger), that
+  capped value is THE final score and must be used everywhere. Do NOT also print the
+  uncapped pre-cap figure elsewhere. Restating a different number in the scorecard is a
+  credibility-destroying inconsistency — pick one canonical value and repeat it exactly.
+
+• INVARIANT 14 — SEVERITY TAXONOMY DISCIPLINE (reserve CRITICAL):
+  CRITICAL is reserved for findings that make the agreement unenforceable or expose a
+  party to catastrophic, unmitigated loss (ghost obligor, affirmative indemnity waiver,
+  illusory earnout with no recovery path). Curable governance gaps — including missing
+  fiduciary safeguards (no board recommendation, no fiduciary-out, missing fairness
+  opinion) — are HIGH, never CRITICAL. Overuse of CRITICAL dilutes the taxonomy's signal
+  value; calibrate so CRITICAL means "stop and fix before signing."
+
+• INVARIANT 15 — TIERED OUTPUT & INDUSTRY CONSISTENCY:
+  (a) Lead with a one-page executive tier: the canonical score, the recommendation, and
+  the top 3 critical/high findings in ≤3 sentences each. Full detailed analysis, proposed
+  revisions, and cross-article synthesis follow afterward. Do not bury the most critical
+  findings (ghost obligor, security gap) under thousands of words of narrative.
+  (b) Industry/vertical detection must be internally consistent: if you characterize the
+  company as a technology/services (or other) business, APPLY that vertical's specialist
+  checklist (IP depth, SaaS earnout metrics, customer concentration) — do NOT write
+  "Vertical(s): None detected" while simultaneously describing the company type. If
+  indicators are insufficient for a specialized checklist, state "Technology/Services
+  detected; insufficient indicators to apply a specialized checklist" rather than
+  "None detected."
+
 ════════════════════════════════════════════════════════════════════════════════
 LAYER 3 RULE L3-A — TIER LENIENCY CONSTRAINT
 ════════════════════════════════════════════════════════════════════════════════

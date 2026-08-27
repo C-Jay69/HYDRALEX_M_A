@@ -628,6 +628,8 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
         escrowSurvivalMismatch: escrowMismatch,
         statutoryMergerNoEnvRep: party.isMerger && !/\benvironmental\b[^.]{0,40}\brepresent/i.test(contractText),
         earnoutBuyerSoleDiscretion: /\bearnout\b/i.test(contractText) && /\bsole\s+discretion\b/i.test(contractText),
+        earnoutBuyerControlsCalc: /\bearnout\b/i.test(contractText) && /\bearnout statement\b|\bbuyer\b.{0,40}\b(?:deliver|calculat|prepar|determin).{0,30}earnout/i.test(contractText),
+        earnoutUndefinedFormula: /\bearnout\b/i.test(contractText) && !/\badjusted ebitda\b|\brevenue\b|\bearnings\b|\$\s?[\d,]+/i.test(contractText),
         undefinedControllingTerms: kg.undefinedControllingTerms,
         ghostObligor: party.findings.some((f) => f.category === "ghost_obligor"),
       }),
@@ -797,10 +799,27 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
   // "execution-ready" when its obligor does not exist or the Plan of Merger is
   // absent. See STRUCTURAL GATE C.
   if (pipelineReadiness?.capsScore) {
-    const capped = Math.min(meta.score, 34);
-    if (capped !== meta.score) {
-      console.warn(`[READINESS GATE] Capping score ${meta.score} → ${capped} (execution-blocking defects).`);
+    const oldScore = meta.score;
+    const capped = Math.min(oldScore, 34);
+    if (capped !== oldScore) {
+      // The readiness gate caps the *structured* score, but the LLM-narrative
+      // scorecard was generated before the cap was known and may still show the
+      // uncapped value. Patch the narrative so the whole deliverable states one
+      // consistent final score (fixes the "34 in header vs 38 in scorecard"
+      // contradiction).
+      reportMarkdown = reportMarkdown.replace(
+        new RegExp(`\\b${oldScore}\\s*/\\s*100\\b`, "g"),
+        `${capped}/100`
+      );
+      reportMarkdown = reportMarkdown.replace(
+        new RegExp(`Risk Score:\\s*${oldScore}\\s*/\\s*100`, "gi"),
+        `Risk Score: ${capped}/100`
+      );
       meta.score = capped;
+      const reparsed = parseReportMetadata(reportMarkdown);
+      reparsed.score = capped;
+      meta = reparsed;
+      console.warn(`[READINESS GATE] Capping score ${oldScore} → ${capped} (execution-blocking defects).`);
     }
     if (meta.recommendation.toUpperCase().includes("PROCEED") && !meta.recommendation.toUpperCase().includes("CONDITION") && !meta.recommendation.toUpperCase().includes("DO NOT")) {
       meta.recommendation = "PROCEED_WITH_CONDITIONS";
