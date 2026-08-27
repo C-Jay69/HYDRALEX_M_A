@@ -1138,6 +1138,42 @@ export function runRedFlagEngine(text: string): { flags: RedFlagT[] } {
     });
   }
 
+  // (i) Extra-contractual fraud waiver (Abry Partners V, Prairie Capital):
+  //     a §4 reliance waiver combined with a §5 fraud cap can foreclose
+  //     common-law fraud remedies, not merely contractual ones (review 4.3).
+  const hasRelianceWaiver =
+    /\bwaives?\s+reliance\s+on\s+any\s+representation\b/i.test(text) ||
+    /\bno\s+(?:other|further)\s+representations?\b[^.]{0,40}(?:made|given)/i.test(text);
+  const hasFraudCapAll =
+    /\bapplicable\s+to\s+all\s+claims\b/i.test(text) ||
+    (/\bfraud\b/i.test(text) && /\bcap\b/i.test(text));
+  if (hasRelianceWaiver && hasFraudCapAll) {
+    flags.push({
+      category: "Extra-Contractual Fraud Waiver (Abry Partners Risk)",
+      severity: "critical",
+      evidence:
+        "§4 reliance waiver ('waives reliance on any representation not expressly set forth') combined with §5 fraud cap ('applicable to all claims') may foreclose extra-contractual fraud remedies under Delaware law (Abry Partners V, Prairie Capital). A sufficiently specific reliance disclaimer can bar common-law fraud claims that are not based on the express representations — leaving Buyer with no fraud recourse, contractual or otherwise, for extra-contractual misrepresentation. Finding 5's contractual fraud carve-out is insufficient unless §4 is also revised to preserve reliance.",
+      location: "contract",
+    });
+  }
+
+  // (j) Seller convenience termination with no break fee, read with the
+  //     §11 integration clause — Buyer absorbs deal costs with no remedy
+  //     and extra-contractual remedies may be foreclosed (review 4.4).
+  const sellerConvenienceTerm =
+    /\bterminate\s+this\s+agreement\s+at\s+any\s+time\s+prior\s+to\s+closing\s+for\s+convenience\b/i.test(text) ||
+    /\bseller\b[^.]{0,140}(?:terminate|termination)[^.]{0,60}(?:convenience|at any time|for any reason)/i.test(text);
+  const hasBreakFee = /\bbreak\s+fee\b|\breverse\s+termination\s+fee\b|\btermination\s+fee\b/i.test(text);
+  if (sellerConvenienceTerm && !hasBreakFee) {
+    flags.push({
+      category: "Seller Convenience Termination Without Break Fee",
+      severity: "high",
+      evidence:
+        "Seller may terminate for convenience with no break/reverse-termination fee. Combined with the §11 integration clause, Buyer's extra-contractual remedies (specific performance, common-law breach damages) may be foreclosed — leaving Buyer to absorb deal costs (diligence, advisors: commonly $1M–$3M on a $50M deal) with no recovery if Seller walks.",
+      location: "contract",
+    });
+  }
+
   // (d) Dual forum conflict: litigation forum (e.g. Delaware Chancery) AND
   //     arbitration (e.g. AAA) both specified with no election or carve-out.
   const hasCourtForum = /\bchancery\s+court\b|\bcourt\s+of\s+chancery\b|\bstate\s+court\b|\bfederal\s+court\b|\bexclusive\s+jurisdiction\b/i.test(text);
@@ -1733,6 +1769,8 @@ export function deriveLitigationElevations(signals: {
   earnoutBuyerSoleDiscretion?: boolean;
   earnoutBuyerControlsCalc?: boolean;
   earnoutUndefinedFormula?: boolean;
+  taxSurvivalCompressed?: boolean;
+  fraudWaiverStack?: boolean;
   undefinedControllingTerms?: string[];
   ghostObligor?: boolean;
 }): LitigationElevation[] {
@@ -1775,6 +1813,24 @@ export function deriveLitigationElevations(signals: {
       to: "moderate",
       confidence: "high",
       reason: `Working-capital true-up mechanism references undefined term(s): ${wcTerms.join(", ")}. A non-functional adjustment is a direct purchase-price-dispute vector.`,
+    });
+  }
+  if (signals.taxSurvivalCompressed) {
+    elevs.push({
+      area: "Tax Disputes",
+      to: "high",
+      confidence: "high",
+      reason:
+        "Representations (including Tax) survive only a very short period (≤90 days) — far shorter than the IRS statute of limitations (3–6 years). Post-closing tax exposure is structurally uncapped by contract, so this is a high-litigation-risk category that Stage 9 must not mark NOT_ASSESSABLE.",
+    });
+  }
+  if (signals.fraudWaiverStack) {
+    elevs.push({
+      area: "Fraud Allegations",
+      to: "high",
+      confidence: "high",
+      reason:
+        "Reliance waiver (§4) combined with a fraud cap (§5) may foreclose extra-contractual fraud remedies under Delaware law (Abry Partners V, Prairie Capital). Fraud recourse may be eliminated both contractually and extra-contractually.",
     });
   }
   if ((signals.undefinedControllingTerms ?? []).some((t) => !/working capital|net working capital/i.test(t))) {
@@ -3150,6 +3206,10 @@ export function runFiduciaryDuty(text: string, dealType?: string): FiduciaryDuty
   if (hasConflict && !(hasSpecial && hasMotM)) {
     missing.push("MFW protections (special committee + majority-of-minority vote)");
     flags.push("Controller/affiliate conflict present without MFW safeguards (8 Del. C. §144 / Kahn v. M&F Worldwide).");
+  }
+  if (!hasNoShop) {
+    missing.push("Exclusivity / no-shop covenant (absent — Seller may solicit competing offers during deal pendency)");
+    flags.push("No exclusivity/no-shop covenant — Seller can entertain competing bids while Buyer's deal is pending (bidding-war / deal-jumping risk).");
   }
 
   let riskLevel: FiduciaryRiskLevel = "LOW";

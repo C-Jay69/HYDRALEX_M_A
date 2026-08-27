@@ -274,3 +274,84 @@ test("Fiduciary Duty: clean merger missing safeguards is HIGH, never CRITICAL (f
   expect(fid.riskLevel).toBe("HIGH");
   expect(fid.riskLevel).not.toBe("CRITICAL");
 });
+
+// STRESS_02 — hostile statutory merger: buyer-favorable earnout, knowledge qualifier,
+// reliance waiver + fraud cap, 0.5% cap / 30-day survival / no escrow, seller
+// convenience termination, no working capital / MAE, no no-shop.
+const STRESS_02 = `
+AGREEMENT AND PLAN OF MERGER
+This Agreement is made between BuyerCo Inc. ("Buyer") and TargetCo Inc. ("Target").
+1. THE MERGER
+Target shall merge with and into Buyer pursuant to Section 251 of the DGCL, with Buyer as the surviving corporation. At the Effective Time, all liabilities of Target shall vest in the surviving corporation by operation of law. "Seller" means the stockholders of Target.
+2. PURCHASE PRICE
+The total purchase price is $50,000,000, of which $48,000,000 is payable in cash at Closing and up to $2,000,000 is an earnout. Metrics determined by Buyer in "sole and absolute discretion following Closing." Buyer is under "no obligation to operate the business in any manner that would result in achievement of the Earnout." Express waiver: "no covenant of good faith shall apply to the Earnout."
+3. REPRESENTATIONS AND WARRANTIES
+"Limited representations, each qualified 'to Seller's knowledge,' where 'knowledge' is undefined and limited to the actual knowledge of a single individual." Express anti-sandbagging waiver: "Buyer agrees that it may not bring any claim for breach of any representation or warranty of which Buyer had knowledge prior to Closing."
+4. DUE DILIGENCE
+Buyer accepts the business "as is, where is," waives reliance on any representation not expressly set forth herein, and confirms that no further information is required from Target.
+5. INDEMNIFICATION
+Seller shall indemnify Buyer for breaches of representations and warranties, subject to an aggregate cap of 0.5% of the Purchase Price (applicable to all claims, including fundamental and tax representations); a tipping basket of 3% of the Purchase Price (no recovery until aggregate Losses exceed the basket, after which recovery is limited to amounts above it); and a survival period of thirty (30) days following Closing. No escrow or holdback secures these obligations.
+6. TERMINATION
+Seller may terminate this Agreement at any time prior to Closing for convenience upon five (5) days' notice. Buyer may terminate only upon a final, non-appealable judicial determination of Seller's fraud.
+7. WORKING CAPITAL
+[No working capital adjustment provision is included.]
+8. MATERIAL ADVERSE EFFECT
+[No Material Adverse Effect definition or condition is included.]
+9. EMPLOYEES
+All employees shall be retained for thirty (30) days post-Closing.
+10. GOVERNING LAW
+This Agreement is governed by the laws of the State of Delaware. Any dispute shall be resolved by AAA arbitration in Wilmington, Delaware.
+11. ENTIRE AGREEMENT
+This Agreement is the entire agreement between the parties.
+IN WITNESS WHEREOF, the parties have executed this Agreement.
+Buyer: _________________     Target: _________________
+`;
+
+test("STRESS_02 (4.1): earnout cross-feed elevates Stage 9 Earnout Disputes to HIGH", () => {
+  const earnoutBuyerControl =
+    /\bearnout\b/i.test(STRESS_02) &&
+    (/\bsole\b[^.]{0,40}\bdiscretion\b/i.test(STRESS_02) ||
+      /\babsolute\s+discretion\b/i.test(STRESS_02) ||
+      /\bmetrics?\s+(?:determined?|calculated?|measured?|set)\s+by\s+(?:the\s+)?buyer/i.test(STRESS_02) ||
+      /\bearnout statement\b/i.test(STRESS_02) ||
+      /\bno\s+covenant\s+of\s+good\s+faith\b[^.]{0,40}earnout/i.test(STRESS_02));
+  expect(earnoutBuyerControl).toBe(true);
+  const elevations = deriveLitigationElevations({ earnoutBuyerSoleDiscretion: earnoutBuyerControl });
+  const lit = runLitigationRisk(STRESS_02, { elevations });
+  const earnout = lit.areas.find((a) => a.area === "Earnout Disputes");
+  expect(earnout?.level).toBe("high");
+  expect(earnout?.confidence).toBe("high");
+});
+
+test("STRESS_02 (4.5): short tax survival cross-feeds Stage 9 Tax Disputes to HIGH", () => {
+  const survivalM = STRESS_02.match(/survival period[^.]{0,120}?(\d+)[^.]{0,15}?days?/i);
+  const survivalDays = survivalM ? parseInt(survivalM[1], 10) : null;
+  const taxSurvivalCompressed = survivalDays !== null && survivalDays <= 90 && /\btax\b/i.test(STRESS_02) && /(?:survival|cap|all claims)/i.test(STRESS_02);
+  expect(taxSurvivalCompressed).toBe(true);
+  const elevations = deriveLitigationElevations({ taxSurvivalCompressed });
+  const lit = runLitigationRisk(STRESS_02, { elevations });
+  const tax = lit.areas.find((a) => a.area === "Tax Disputes");
+  expect(tax?.level).toBe("high");
+  expect(tax?.confidence).toBe("high");
+});
+
+test("STRESS_02 (4.3): Red Flag Engine flags Abry extra-contractual fraud waiver", () => {
+  const rf = runRedFlagEngine(STRESS_02);
+  const cats = rf.flags.map((f) => f.category);
+  expect(cats).toContain("Extra-Contractual Fraud Waiver (Abry Partners Risk)");
+  const flag = rf.flags.find((f) => f.category === "Extra-Contractual Fraud Waiver (Abry Partners Risk)")!;
+  expect(flag.severity).toBe("critical");
+});
+
+test("STRESS_02 (4.4): Red Flag Engine flags seller convenience termination without break fee", () => {
+  const rf = runRedFlagEngine(STRESS_02);
+  const cats = rf.flags.map((f) => f.category);
+  expect(cats).toContain("Seller Convenience Termination Without Break Fee");
+});
+
+test("STRESS_02 (4.7): Fiduciary Duty flags absence of no-shop as a gap", () => {
+  const fid = runFiduciaryDuty(STRESS_02, "STATUTORY_MERGER");
+  expect(fid.isApplicable).toBe(true);
+  expect(fid.safeguardsMissing.join("; ").toLowerCase()).toContain("no-shop");
+});
+
