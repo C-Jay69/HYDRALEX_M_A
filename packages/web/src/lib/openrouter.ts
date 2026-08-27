@@ -882,18 +882,40 @@ VALIDATION INVARIANTS (mandatory sanity-check layer — apply before compiling f
   opinion) — are HIGH, never CRITICAL. Overuse of CRITICAL dilutes the taxonomy's signal
   value; calibrate so CRITICAL means "stop and fix before signing."
 
-• INVARIANT 15 — TIERED OUTPUT & INDUSTRY CONSISTENCY:
-  (a) Lead with a one-page executive tier: the canonical score, the recommendation, and
-  the top 3 critical/high findings in ≤3 sentences each. Full detailed analysis, proposed
-  revisions, and cross-article synthesis follow afterward. Do not bury the most critical
-  findings (ghost obligor, security gap) under thousands of words of narrative.
-  (b) Industry/vertical detection must be internally consistent: if you characterize the
-  company as a technology/services (or other) business, APPLY that vertical's specialist
-  checklist (IP depth, SaaS earnout metrics, customer concentration) — do NOT write
-  "Vertical(s): None detected" while simultaneously describing the company type. If
-  indicators are insufficient for a specialized checklist, state "Technology/Services
-  detected; insufficient indicators to apply a specialized checklist" rather than
-  "None detected."
+  • INVARIANT 15 — TIERED OUTPUT & INDUSTRY CONSISTENCY:
+   (a) Lead with a one-page executive tier: the canonical score, the recommendation, and
+   the top 3 critical/high findings in ≤3 sentences each. Full detailed analysis, proposed
+   revisions, and cross-article synthesis follow afterward. Do not bury the most critical
+   findings (ghost obligor, security gap) under thousands of words of narrative.
+   (b) Industry/vertical detection must be internally consistent: if you characterize the
+   company as a technology/services (or other) business, APPLY that vertical's specialist
+   checklist (IP depth, SaaS earnout metrics, customer concentration) — do NOT write
+   "Vertical(s): None detected" while simultaneously describing the company type. If
+   indicators are insufficient for a specialized checklist, state "Technology/Services
+   detected; insufficient indicators to apply a specialized checklist" rather than
+   "None detected."
+
+  • INVARIANT 16 — GHOST OBLIGOR REMEDY STRUCTURE (review 4.2):
+   When proposing a fix for a ghost obligor (an undefined Seller/indemnitor that does not
+   sign), offer BOTH remedies and label the economic one as primary:
+   (a) Surviving-entity acknowledgment — the obligation runs against the surviving
+   corporation's own assets. This is a SHORT-TERM contractual patch only; economically
+   weak because Buyer would effectively be agreeing to pay itself.
+   (b) PRINCIPAL ECONOMIC FIX — a shareholder-representative / equityholder indemnity
+   structure under which the former Target shareholders (who received the consideration)
+   remain bound to indemnification through a shareholder representative. Recourse runs
+   against the parties who pocketed the purchase price, not the surviving Buyer. Present
+   (b) as the primary protection; (a) is listed as a secondary, interim acknowledgment.
+
+  • INVARIANT 17 — BASKET TYPING (review 4.6):
+   Distinguish a DEDUCTIBLE basket from a TIPPING basket:
+   • DEDUCTIBLE: "no recovery until aggregate Losses exceed the basket, after which recovery
+     is limited to amounts ABOVE it" — once met, only the excess is recoverable.
+   • TIPPING: once the threshold is met, ALL losses from dollar one are recoverable, up to
+     the cap.
+   Language such as "recovery is limited to amounts above it" is a DEDUCTIBLE basket. Label
+   it correctly (do not call it a "tipping basket"); the economic outcome can diverge from a
+   tipping basket on ambiguous loss calculations even when the cap is below the basket.
 
 ════════════════════════════════════════════════════════════════════════════════
 LAYER 3 RULE L3-A — TIER LENIENCY CONSTRAINT
