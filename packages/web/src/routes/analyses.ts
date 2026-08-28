@@ -615,6 +615,27 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
       text: contractText,
     });
 
+    // Unify Stage 9 with synthesis-level findings so the litigation table
+    // cannot contradict the risk engine (Stage 9 vs Synthesis fix).
+    const earnoutPresent = /\bearnout\b/i.test(contractText);
+    const earnoutBuyerControl =
+      earnoutPresent &&
+      (/\bsole\b[^.]{0,40}\bdiscretion\b/i.test(contractText) ||
+        /\babsolute\s+discretion\b/i.test(contractText) ||
+        /\bmetrics?\s+(?:determined?|calculated?|measured?|set)\s+by\s+(?:the\s+)?buyer/i.test(contractText) ||
+        /\bearnout statement\b/i.test(contractText) ||
+        /\bno\s+covenant\s+of\s+good\s+faith\b[^.]{0,40}earnout/i.test(contractText));
+    const earnoutUndefinedFormula =
+      earnoutPresent && !/\badjusted ebitda\b|\brevenue\b|\bearnings\b|\$\s?[\d,]+/i.test(contractText);
+    const survivalM = contractText.match(/survival period[^.]{0,120}?(\d+)[^.]{0,15}?days?/i);
+    const survivalDays = survivalM ? parseInt(survivalM[1], 10) : null;
+    const taxSurvivalCompressed =
+      survivalDays !== null && survivalDays <= 90 && /\btax\b/i.test(contractText) && /(?:survival|cap|all claims)/i.test(contractText);
+    const fraudWaiverStack =
+      (/\bwaives?\s+reliance\s+on\s+any\s+representation\b/i.test(contractText) ||
+        /\bno\s+(?:other|further)\s+representations?\b[^.]{0,40}(?:made|given)/i.test(contractText)) &&
+      (/\bapplicable\s+to\s+all\s+claims\b/i.test(contractText) ||
+        (/\bfraud\b/i.test(contractText) && /\bcap\b/i.test(contractText)));
     const litCtx = {
       hasIndemnificationCap: /\bcap\b/i.test(contractText) && /indemnif/i.test(contractText),
       hasEscrow: /\bescrow\b/i.test(contractText),
@@ -622,27 +643,6 @@ async function runPipeline(id: number, documents: DocInput[], perspective: Revie
       hasDisclosureSchedules: /\bschedule\b|\bdisclosure\s+schedules?\b/i.test(contractText),
       hasFinancialStatements: /\bfinancial\s+statements?\b/i.test(contractText),
       hasRegulatoryFilings: /\bhsr\b|\bcfius\b|\bregulatory\s+filing/i.test(contractText),
-      // Unify Stage 9 with synthesis-level findings so the litigation table
-      // cannot contradict the risk engine (Stage 9 vs Synthesis fix).
-      const earnoutPresent = /\bearnout\b/i.test(contractText);
-      const earnoutBuyerControl =
-        earnoutPresent &&
-        (/\bsole\b[^.]{0,40}\bdiscretion\b/i.test(contractText) ||
-          /\babsolute\s+discretion\b/i.test(contractText) ||
-          /\bmetrics?\s+(?:determined?|calculated?|measured?|set)\s+by\s+(?:the\s+)?buyer/i.test(contractText) ||
-          /\bearnout statement\b/i.test(contractText) ||
-          /\bno\s+covenant\s+of\s+good\s+faith\b[^.]{0,40}earnout/i.test(contractText));
-      const earnoutUndefinedFormula =
-        earnoutPresent && !/\badjusted ebitda\b|\brevenue\b|\bearnings\b|\$\s?[\d,]+/i.test(contractText);
-      const survivalM = contractText.match(/survival period[^.]{0,120}?(\d+)[^.]{0,15}?days?/i);
-      const survivalDays = survivalM ? parseInt(survivalM[1], 10) : null;
-      const taxSurvivalCompressed =
-        survivalDays !== null && survivalDays <= 90 && /\btax\b/i.test(contractText) && /(?:survival|cap|all claims)/i.test(contractText);
-      const fraudWaiverStack =
-        (/\bwaives?\s+reliance\s+on\s+any\s+representation\b/i.test(contractText) ||
-          /\bno\s+(?:other|further)\s+representations?\b[^.]{0,40}(?:made|given)/i.test(contractText)) &&
-        (/\bapplicable\s+to\s+all\s+claims\b/i.test(contractText) ||
-          (/\bfraud\b/i.test(contractText) && /\bcap\b/i.test(contractText)));
       elevations: deriveLitigationElevations({
         escrowSurvivalMismatch: escrowMismatch,
         statutoryMergerNoEnvRep: party.isMerger && !/\benvironmental\b[^.]{0,40}\brepresent/i.test(contractText),
