@@ -170,6 +170,70 @@ test("DGCL Mechanics: STRESS_03 merger missing core execution mechanics", () => 
   expect(rendered).toContain("DGCL §251 EXECUTION MECHANICS");
 });
 
+// ── Review fixes: dynamic DGCL heading, consideration-first price detection,
+//    case-insensitive signature labels ────────────────────────────────────────
+
+// Merger agreement where the §2.1 $0.0001 par value appears BEFORE the actual
+// deal consideration — the classic false-positive trap for price extraction.
+const PAR_VALUE_TRAP = `
+AGREEMENT AND PLAN OF MERGER
+This Agreement is entered into by and among Buyer Holdings Inc. ("Parent"), Merger Sub Inc. ("Merger Sub"), and Target Tech Inc. (the "Company").
+2.1 Capitalization. The authorized capital stock of the Company consists of 50,000,000 shares of common stock, $0.0001 par value per share.
+3.1 Merger Consideration. At the Effective Time, each share of Company common stock shall be converted into the right to receive $38.00 per share in cash. The aggregate merger consideration shall be $38,000,000.
+`;
+
+test("Appraisal exposure: prefers merger consideration over $0.0001 par value", () => {
+  const ap = analyzeAppraisalRights(PAR_VALUE_TRAP, "STATUTORY_MERGER", "DELAWARE");
+  // Base price must be the $38,000,000 aggregate merger consideration, not the
+  // $0.0001 par value (which previously scaled to a bogus $100 base).
+  expect(ap.economicExposure).toContain("of $38,000,000 merger consideration");
+  expect(ap.economicExposure).not.toMatch(/\$100\b/);
+});
+
+test("Appraisal exposure: cannot estimate when only par-value / per-share figures exist", () => {
+  const ap = analyzeAppraisalRights(
+    "Each share shall be converted into the right to receive $38.00 per share in cash. Common stock, $0.0001 par value.",
+    "STATUTORY_MERGER",
+    "DELAWARE",
+  );
+  expect(ap.economicExposure).toContain("Cannot estimate");
+});
+
+test("DGCL heading is driven by findingTitle, not hardcoded", () => {
+  const dg = runDgclExecutionMechanics(STRESS_03);
+  const rendered = renderDgclExecutionMechanics(dg);
+  expect(rendered).toMatch(/^### DGCL §251 EXECUTION MECHANICS — \d+ DEFECT\(S\) FOUND$/m);
+  // Status now lives in the heading; no duplicated Status line.
+  expect(rendered).not.toContain("**Status:**");
+});
+
+test("DGCL heading shows PASS when all execution mechanics are present", () => {
+  const clean = `
+AGREEMENT AND PLAN OF MERGER
+"Effective Time" means the time at which the Certificate of Merger is filed with the Secretary of State of Delaware.
+The Board of Directors has approved this Agreement and adopted the Plan of Merger attached hereto as Exhibit A.
+Buyer shall file the Certificate of Merger with the Delaware Secretary of State promptly after closing.
+`;
+  const dg = runDgclExecutionMechanics(clean);
+  expect(dg.defectsFound.length).toBe(0);
+  const rendered = renderDgclExecutionMechanics(dg);
+  expect(rendered).toContain("### DGCL §251 EXECUTION MECHANICS — PASS");
+});
+
+test("Party Integrity: BY:/By: signature labels matched case-insensitively", () => {
+  const text = `
+MERGER AGREEMENT between Buyer Corp and Seller Inc.
+IN WITNESS WHEREOF, the parties have executed this Agreement.
+BY: John Smith
+  Title: Chief Executive Officer
+By: Jane Doe
+  Title: Chief Financial Officer
+`;
+  const pi = runPartyIntegrity(text);
+  expect(pi.signatories.some((s) => s.startsWith("John Smith"))).toBe(true);
+  expect(pi.signatories.some((s) => s.startsWith("Jane Doe"))).toBe(true);
+});
+
 test("Appraisal Rights: asset purchase is not applicable", () => {
   const ap = analyzeAppraisalRights("Seller sells all assets to Buyer for $50,000,000.", "ASSET_PURCHASE", "DELAWARE");
   expect(ap.isMerger).toBe(false);
