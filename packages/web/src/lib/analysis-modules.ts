@@ -2601,8 +2601,10 @@ export function runPartyIntegrity(text: string, dealType?: string): PartyIntegri
       .split(/\s+/)
       .filter((w) => /^[A-Z][\w&.',\-]*$/.test(w))
       .join(" ");
-  // "By: <Name>" execution lines
-  const sigRe = /\bby:\s*\n?\s*([A-Z][\w&.',\-]*(?:\s+[A-Z][\w&.',\-]*){0,4})/g;
+  // "By: <Name>" execution lines. Case-insensitive so ALL-CAPS signature-block
+  // conventions ("BY:", "By:") match as well as lowercase "by:". cleanName()
+  // still enforces Title-case name tokens, keeping name filtering strict.
+  const sigRe = /\bby:\s*\n?\s*([A-Z][\w&.',\-]*(?:\s+[A-Z][\w&.',\-]*){0,4})/gi;
   let sm: RegExpExecArray | null;
   while ((sm = sigRe.exec(text)) !== null) {
     const name = cleanName(sm[1]);
@@ -2913,16 +2915,76 @@ export function analyzeAppraisalRights(
   };
 }
 
-function estimateAppraisalExposure(text: string, riskLevel: AppraisalRiskLevel): string {
-  const priceMatch = text.match(/\$\s*([\d,]+(?:\.\d+)?)\s*(?:million|M\b)?/i);
-  let basePrice: number | null = null;
-  if (priceMatch) {
-    const raw = priceMatch[1].replace(/,/g, "");
-    const n = parseFloat(raw);
-    if (!Number.isNaN(n)) {
-      basePrice = n < 1000 ? n * 1_000_000 : n;
+// ─────────────────────────────────────────────────────────────────────────────
+// Deal-consideration extraction for appraisal exposure estimation.
+// The naive "first $ figure in the document" heuristic grabbed the $0.0001 par
+// value from the capitalization representation (§2.1) instead of the actual
+// merger consideration. These patterns prefer dollar amounts anchored to
+// consideration/price language before falling back to a generic $ figure.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const AMOUNT_RE_SRC = String.raw`\$\s*([\d,]+(?:\.\d+)?)\s*(million|billion|m\b|b\b)?`;
+const CONSIDERATION_PHRASE_SRC =
+  String.raw`\b(?:aggregate|total|combined|merger|purchase|sale|transaction)\s+(?:merger\s+)?(?:consideration|price|value)`;
+
+// Ordered by confidence: tight phrase→amount couplings first, then a looser
+// same-sentence window, then amount→phrase ("$38,000,000 in aggregate merger
+// consideration").
+const CONSIDERATION_AMOUNT_RES: RegExp[] = [
+  new RegExp(
+    CONSIDERATION_PHRASE_SRC +
+      String.raw`["'“”‘’]?\s*(?:of|is|shall\s+be|will\s+be|was|means?|equals?|equal\s+to|amounting\s+to)?\s*[:=—-]?\s*` +
+      AMOUNT_RE_SRC,
+    "i",
+  ),
+  new RegExp(CONSIDERATION_PHRASE_SRC + String.raw`["'“”‘’]?[^$\n.]{0,40}?` + AMOUNT_RE_SRC, "i"),
+  new RegExp(AMOUNT_RE_SRC + String.raw`[^$\n.]{0,80}?` + CONSIDERATION_PHRASE_SRC, "i"),
+];
+
+// Amounts tied to these contexts are not the aggregate deal value: a par value
+// is a nominal figure, and a per-share price cannot produce an aggregate
+// exposure estimate without a share count.
+const NON_DEAL_AMOUNT_CONTEXT = /par\s+value|per\s+share/i;
+
+function parseDollarAmount(amount: string, scale?: string): number | null {
+  const n = parseFloat(amount.replace(/,/g, ""));
+  if (Number.isNaN(n)) return null;
+  switch ((scale || "").toLowerCase()) {
+    case "million":
+    case "m":
+      return n * 1_000_000;
+    case "billion":
+    case "b":
+      return n * 1_000_000_000;
+    default:
+      // Bare figures below 1,000 are conventionally stated in millions.
+      return n < 1_000 ? n * 1_000_000 : n;
+  }
+}
+
+function findDealConsideration(text: string): number | null {
+  // 1) Amounts anchored to consideration/price language.
+  for (const re of CONSIDERATION_AMOUNT_RES) {
+    const m = text.match(re);
+    if (m && !NON_DEAL_AMOUNT_CONTEXT.test(m[0])) {
+      const v = parseDollarAmount(m[1], m[2]);
+      if (v) return v;
     }
   }
+  // 2) Fallback: first $ figure that is not a par-value / per-share amount.
+  const generic = new RegExp(AMOUNT_RE_SRC, "gi");
+  let gm: RegExpExecArray | null;
+  while ((gm = generic.exec(text)) !== null) {
+    const ctx = text.slice(Math.max(0, gm.index - 60), gm.index + 60);
+    if (NON_DEAL_AMOUNT_CONTEXT.test(ctx)) continue;
+    const v = parseDollarAmount(gm[1], gm[2]);
+    if (v) return v;
+  }
+  return null;
+}
+
+function estimateAppraisalExposure(text: string, riskLevel: AppraisalRiskLevel): string {
+  const basePrice = findDealConsideration(text);
   if (!basePrice) {
     return "Cannot estimate — purchase price not determinable from contract text. Appraisal exposure is the difference between fair value (judicially determined) and merger consideration, plus statutory interest.";
   }
@@ -3118,9 +3180,11 @@ export function runDgclExecutionMechanics(text: string): DgclMechanicsResult {
 export function renderDgclExecutionMechanics(result: DgclMechanicsResult): string {
   if (!result.isMerger) return "";
   const lines: string[] = [];
-  lines.push("### DGCL §251 EXECUTION MECHANICS");
-  lines.push("");
-  lines.push(`**Status:** ${result.findingTitle}`);
+  // Heading is driven by findingTitle so the PASS/defect status surfaces in the
+  // heading itself (e.g. "DGCL §251 EXECUTION MECHANICS — 3 DEFECT(S) FOUND")
+  // instead of a hardcoded static title. Uppercased to match the heading
+  // convention used by the other module renderers.
+  lines.push(`### ${result.findingTitle.toUpperCase()}`);
   lines.push("");
   lines.push(result.findingDetail.trimEnd());
   lines.push("");
