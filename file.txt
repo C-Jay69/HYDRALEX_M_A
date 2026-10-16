@@ -1,5 +1,32 @@
-Representations: Target has no known liabilities.
+DEFINITIONS
+"Equityholders" means the holders of all outstanding Equity Interests in Target immediately prior to the Effective Time.
+"Shareholder Representative" means [Name], appointed by unanimous written consent of the Equityholders to act as agent and attorney-in-fact for the Equityholders with respect to all matters under this Agreement, including indemnification claims, escrow releases, and any amendments or waivers. The Shareholder Representative shall have the power to give and receive notices, make decisions, and bind the Equityholders. Actions taken by the Shareholder Representative shall be final and binding on all Equityholders.
+"Effective Time" means the time on the Closing Date when the Certificate of Merger is duly filed with the Secretary of State of the State of Delaware (or such later time as may be specified therein).
+"Closing Date" means the date on which the Closing occurs, which shall be the date specified in the Closing Notice, subject to satisfaction of the conditions set forth in Section [Conditions].
+"Closing Net Working Capital" means Current Assets minus Current Liabilities of Target as determined in accordance with GAAP, calculated on the Closing Date.
+"True-Up Procedure" means the procedure set forth in Section [Purchase Price Adjustment] whereby, within 60 days after Closing, Buyer shall deliver a Closing Net Working Capital Statement; the parties shall have a 30-day review period; any dispute shall be resolved by an Independent Accountant whose determination shall be final and binding.
+"Termination Fees" means, if Buyer terminates this Agreement pursuant to Section [Termination], a fee equal to 3% of the Purchase Price, which shall be paid within five Business Days of termination.
+
+PARTIES AND OBLIGATIONS
+Seller shall cause each Equityholder to execute and deliver a Joinder Agreement in the form attached hereto as Exhibit A at Closing, pursuant to which each Equityholder agrees to be bound by the terms of this Agreement, including indemnification obligations, and appoints the Shareholder Representative. No Closing shall occur unless executed Joinders have been delivered for all Equityholders.
+
+REPRESENTATIONS
+Target has no known liabilities.
 Financial statements fairly present the company's position.
-No indemnification clause in this agreement.
-Survival: Representations shall not survive Closing.
+
+INDEMNIFICATION
+Equityholders, jointly and severally, shall indemnify and hold harmless Buyer and its Affiliates from Losses arising from breaches of representations, warranties, covenants, and agreements.
+
+General Cap: The aggregate liability of Equityholders under this indemnity shall be capped at 15% of the Purchase Price.
+
+Tipping Basket: No indemnification shall be available for individual Losses unless and until the aggregate Losses exceed 0.5% of the Purchase Price, after which Buyer may recover the entire amount of Losses in excess of the basket threshold (tipping basket).
+
+Survival: Representations and warranties shall survive Closing for 24 months (General Survival Period). Fundamental representations shall survive for so long as the statute of limitations remains applicable.
+
+Fraud Carve-Out: Notwithstanding any cap, basket, or survival limitation, the limitations set forth herein shall not apply to Losses arising out of fraud or intentional misrepresentation by the Equityholders. Fraud claims shall be unlimited and shall survive indefinitely.
+
+SURVIVAL
+Representations shall survive Closing in accordance with Section [Indemnification] above.
+
+ASSUMPTION OF CONTRACTS
 All material contracts assumed without review.

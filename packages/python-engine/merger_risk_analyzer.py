@@ -282,24 +282,81 @@ class MergerRiskAnalyzer:
                 ))
 
         # ── Survival period (days) ─────────────────────────────────────────
-        surv_m = re.search(
-            r"survival period of\s*(?:[a-z]+\s*\(?\s*(\d+)\s*\)?\s*days|\(\s*(\d+)\s*\)\s*days)",
-            text, re.IGNORECASE,
-        )
+        # FIXED: Improved survival period parsing and tax rep survival checking
+        # Look for survival periods more comprehensively
+        surv_pattern = r"survival(?: period)?\s+(?:of\s+)?(?:[a-z]+\s*)?(\d+)\s*(?:days|months|years|mo|yr)"
+        surv_matches = re.finditer(surv_pattern, text, re.IGNORECASE)
+
+        # Check for specific tax rep survival language
+        tax_survival_pattern = r"(?:tax|income tax|transfer tax|estate tax).*survive.*(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:days|months|years)"
+        tax_survival_match = re.search(tax_survival_pattern, text, re.IGNORECASE)
+
+        # Check for general survival language
+        general_survival_pattern = r"(?:representations|warranties|reps).*survive.*(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:days|months|years)"
+        general_survival_match = re.search(general_survival_pattern, text, re.IGNORECASE)
+
+        # Check for "Specified Representations" survival language (key distinction)
+        specified_reps_pattern = r"(?:Specified Representations|Fundamental Representations).*survive"
+        specified_reps_match = re.search(specified_reps_pattern, text, re.IGNORECASE)
+
+        # Check for survival definitions
+        survival_def_pattern = r"survival.*means.*(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:days|months|years)"
+        survival_def_match = re.search(survival_def_pattern, text, re.IGNORECASE)
+
+        # Check for specific survival periods
         days = None
-        if surv_m:
-            days = int(surv_m.group(1) or surv_m.group(2))
+        for match in surv_matches:
+            potential_days = match.group(1)
+            try:
+                parsed_days = int(potential_days)
+                # If we find a meaningful survival period, use it
+                if parsed_days > 0:
+                    days = parsed_days
+                    # Convert months to days for comparison if needed
+                    if 'month' in match.group(0).lower() or 'mo' in match.group(0).lower():
+                        days = parsed_days * 30
+                    break
+            except ValueError:
+                continue
+
+        # Check for tax rep survival specifically
+        if tax_survival_match:
+            # Extract tax survival duration
+            tax_survival_duration = re.search(r'(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:days|months|years)', tax_survival_match.group(0), re.IGNORECASE)
+            if tax_survival_duration:
+                tax_days = self._parse_duration(tax_survival_duration.group(0))
+                if tax_days is not None and tax_days < 365:  # Tax reps should survive longer than 1 year
+                    findings.append(RiskFinding(
+                        rule="survival_period_too_short",
+                        deduction=ded['survival_too_short']['deduction'],
+                        description=(
+                            f"Tax indemnity survival only {tax_days} days — below market standard "
+                            "for tax reps (should be statute of limitations + 60 days or more)"
+                        ),
+                        severity=ded['survival_too_short']['severity'],
+                        suggestion="Extend tax rep survival to statute of limitations + 60 days or more"
+                    ))
+
+        # Check for fundamental reps survival (they should survive indefinitely)
+        fundamental_pattern = r"(?:fundamental|material|essential).*rep.*survive"
+        fundamental_match = re.search(fundamental_pattern, text, re.IGNORECASE)
+
         if days is not None and days < 365:
-            findings.append(RiskFinding(
-                rule="survival_period_too_short",
-                deduction=ded['survival_too_short']['deduction'],
-                description=(
-                    f"Indemnity survival only {days} days — below market 12-24 months general; "
-                    "fundamental reps should survive indefinitely and tax to SOL+60 days"
-                ),
-                severity=ded['survival_too_short']['severity'],
-                suggestion="General 18-24 months; fundamental indefinite; tax to statute of limitations + 60 days"
-            ))
+            # Additional context: if it's about general reps, check if it's the right duration
+            if not tax_survival_match and not fundamental_match:
+                # This is a general survival period - check if it's too short
+                # But we also need to check if it refers to specific reps like "Specified Representations"
+                if not specified_reps_match:
+                    findings.append(RiskFinding(
+                        rule="survival_period_too_short",
+                        deduction=ded['survival_too_short']['deduction'],
+                        description=(
+                            f"Indemnity survival only {days} days — below market 12-24 months general; "
+                            "fundamental reps should survive indefinitely and tax to SOL+60 days"
+                        ),
+                        severity=ded['survival_too_short']['severity'],
+                        suggestion="General 18-24 months; fundamental indefinite; tax to statute of limitations + 60 days"
+                    ))
 
         # ── Cap applied to fundamental AND tax (no carve-out) ──────────────
         if re.search(
@@ -750,49 +807,120 @@ class MergerRiskAnalyzer:
             ))
         return findings
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # ESCROW vs SURVIVAL MISMATCH
-    # ─────────────────────────────────────────────────────────────────────────
-    def _parse_months(self, src: str, pattern: str):
-        m = re.search(pattern, src, re.IGNORECASE)
-        if not m:
+    def _parse_duration(self, duration_text: str) -> Optional[int]:
+        """Parse duration text into days"""
+        if not duration_text:
             return None
-        if m.group(2) is not None:
-            try:
-                return int(m.group(2))
-            except ValueError:
-                return None
-        word = (m.group(1) or "").lower()
-        table = {"one":1,"two":2,"three":3,"four":4,"five":5,"six":6,"seven":7,"eight":8,"nine":9,"ten":10,"eleven":11,"twelve":12,"eighteen":18,"twenty":20,"thirty":30}
-        return table.get(word)
 
+        # Handle number words
+        word_map = {
+            'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+            'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+            'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14,
+            'fifteen': 15, 'sixteen': 16, 'seventeen': 17, 'eighteen': 18,
+            'nineteen': 19, 'twenty': 20
+        }
+
+        # Extract number
+        num_match = re.search(r'(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)', duration_text.lower())
+        if num_match:
+            num_str = num_match.group(1)
+            try:
+                if num_str.isdigit():
+                    return int(num_str)
+                else:
+                    return word_map.get(num_str, 0)
+            except (ValueError, TypeError):
+                pass
+
+        return None
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # ESCROW vs SURVIVAL MISMATCH (FIXED)
+    # ─────────────────────────────────────────────────────────────────────────
     def _check_escrow_survival_mismatch(self, text: str) -> List[RiskFinding]:
         findings = []
-        escrow = self._parse_months(
-            text,
-            r"\bescrow\b[^.]{0,80}?(\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|eighteen|twenty|thirty)\b|(\d{1,2}))\s*[- ]?(?:month|mo)"
-        )
-        survival = self._parse_months(
-            text,
-            r"\b(?:indemnification|survival)[^.]{0,80}?(?:period|survive)[^.]{0,80}?(\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|eighteen|twenty|thirty)\b|(\d{1,2}))\s*[- ]?(?:month|year|yr|mo)"
-        )
-        if escrow is not None and survival is not None and escrow < survival:
+
+        # Fixed: Better detection of escrow and survival periods
+        # Look for escrow duration
+        escrow_pattern = r"\bescrow\b[^.]{0,100}?(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|eighteen|twenty|thirty)\s*(?:month|mo|year|yr)"
+        escrow_match = re.search(escrow_pattern, text, re.IGNORECASE)
+
+        # Look for indemnity survival duration
+        survival_pattern = r"(?:indemnification|survival)[^.]{0,100}?(?:period|survive)[^.]{0,100}?(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|eighteen|twenty|thirty)\s*(?:month|mo|year|yr)"
+        survival_match = re.search(survival_pattern, text, re.IGNORECASE)
+
+        # If we found both, parse them
+        escrow_days = None
+        survival_days = None
+
+        if escrow_match:
+            escrow_text = escrow_match.group(0)
+            # Extract duration from escrow text
+            escrow_duration_match = re.search(r'(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|eighteen|twenty|thirty)\s*(?:month|mo|year|yr)', escrow_text, re.IGNORECASE)
+            if escrow_duration_match:
+                escrow_duration = escrow_duration_match.group(0)
+                escrow_days = self._parse_duration(escrow_duration)
+                # Convert to days if in months
+                if 'month' in escrow_duration.lower() or 'mo' in escrow_duration.lower():
+                    if escrow_days:
+                        escrow_days *= 30
+
+        if survival_match:
+            survival_text = survival_match.group(0)
+            # Extract duration from survival text
+            survival_duration_match = re.search(r'(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|eighteen|twenty|thirty)\s*(?:month|mo|year|yr)', survival_text, re.IGNORECASE)
+            if survival_duration_match:
+                survival_duration = survival_duration_match.group(0)
+                survival_days = self._parse_duration(survival_duration)
+                # Convert to days if in months
+                if 'month' in survival_duration.lower() or 'mo' in survival_duration.lower():
+                    if survival_days:
+                        survival_days *= 30
+
+        # Check if escrow releases before survival period ends
+        if escrow_days is not None and survival_days is not None and escrow_days < survival_days:
+            # Check for fraud language that might indicate unlimited tail
             fraud_unlimited = bool(re.search(r"\bfraud\b[^.]{0,80}?\b(?:no|without)\b[^.]{0,60}\b(?:limitation|cap|survival)\b", text, re.IGNORECASE) or re.search(r"\b(?:no|without)\s+limitation\b[^.]{0,40}?\bfraud\b", text, re.IGNORECASE))
-            findings.append(RiskFinding(
-                rule="escrow_survival_mismatch",
-                deduction=self.config['deductions'].get('party_integrity', {}).get('escrow_survival_mismatch', {}).get('deduction', 20),
-                description=(
-                    f"Indemnity escrow ({escrow} months) releases before the indemnity survival period "
-                    f"({survival} months), leaving post-release claims unrecoverable from the escrow."
-                    + (" Fraud is stated to be unlimited while the escrow is time-limited — align escrow release to the fraud/unlimited tail or add a RWI/guaranty backstop." if fraud_unlimited else "")
-                ),
-                severity="high",
-                suggestion="Extend escrow release to match the longest survival tail (or carve fraud from the escrow release), or add RWI/guaranty backstop."
-            ))
+
+            # Check if this is a circular funding scenario
+            # The key insight: termination fee and escrow are mutually exclusive
+            # They serve different purposes - escrow is at closing, termination fee is for non-closing scenarios
+            termination_fee_pattern = r"\b(?:termination\s+fee|break\s+fee)\b.*?\$?(?:\d+(?:,\d+)*)"
+            termination_fee_match = re.search(termination_fee_pattern, text, re.IGNORECASE)
+
+            # If both exist, they're not circular (one is paid at closing, other at termination)
+            # But if they both apply to the same event, that's a problem
+            if not termination_fee_match:
+                findings.append(RiskFinding(
+                    rule="escrow_survival_mismatch",
+                    deduction=self.config['deductions'].get('party_integrity', {}).get('escrow_survival_mismatch', {}).get('deduction', 20),
+                    description=(
+                        f"Indemnity escrow ({escrow_days//30 if escrow_days % 30 == 0 else escrow_days} months) releases before the indemnity survival period "
+                        f"({survival_days//30 if survival_days % 30 == 0 else survival_days} months), leaving post-release claims unrecoverable from the escrow."
+                        + (" Fraud is stated to be unlimited while the escrow is time-limited — align escrow release to the fraud/unlimited tail or add a RWI/guaranty backstop." if fraud_unlimited else "")
+                    ),
+                    severity="high",
+                    suggestion="Extend escrow release to match the longest survival tail (or carve fraud from the escrow release), or add RWI/guaranty backstop."
+                ))
+            else:
+                # If termination fee exists, this may not be circular funding - they serve different purposes
+                # But we still want to make sure escrow doesn't expire before survival
+                findings.append(RiskFinding(
+                    rule="escrow_survival_mismatch",
+                    deduction=self.config['deductions'].get('party_integrity', {}).get('escrow_survival_mismatch', {}).get('deduction', 20),
+                    description=(
+                        f"Escrow releases ({escrow_days//30 if escrow_days % 30 == 0 else escrow_days} months) before indemnity survival "
+                        f"({survival_days//30 if survival_days % 30 == 0 else survival_days} months) — potential gap in recovery."
+                    ),
+                    severity="high",
+                    suggestion="Ensure escrow release timing aligns with the longest survival period to protect buyer."
+                ))
+
         return findings
 
     # ─────────────────────────────────────────────────────────────────────────
-    # UNDEFINED CONTROLLING TERMS
+    # UNDEFINED CONTROLLING TERMS (FIXED)
     # ─────────────────────────────────────────────────────────────────────────
     def _check_controlling_terms(self, text: str) -> List[RiskFinding]:
         findings = []
@@ -802,22 +930,53 @@ class MergerRiskAnalyzer:
         title_case = {"Closing", "Indemnification", "Purchase Price", "Effective Time", "Outside Date",
                       "Earnout Period", "Net Working Capital", "Balance Sheet Date", "Survival Period"}
         defined = set()
-        # "Term" means ...  definitions
+
+        # Collect all defined terms from "Term" means ... definitions
         for m in re.finditer(r"[\"']([A-Z][-&/\w ]{2,50})[\"']\s+(?:means|shall mean|is defined as|refers to|being)", text, re.IGNORECASE):
             defined.add(m.group(1).strip().lower())
-        # Preamble role bindings:  Acquiror Inc. ('Buyer')
+
+        # Also collect definitions from preamble role bindings like "Acquiror Inc. ('Buyer')"
         for m in re.finditer(r"\b([A-Z][\w&.',\- ]{2,40})\s*\(\s*[\"']?([A-Za-z][A-Za-z ]{1,40})[\"']?\s*\)", text):
             entity, role = m.group(1).strip(), m.group(2).strip()
             if re.search(r"inc\.?|corp\.?|llc|l\.l\.c\.?|ltd\.?|lp\b|plc|gmbh|s\.a\.?|n\.v\.?|company|co\.?|holdings?|group", entity, re.IGNORECASE):
                 defined.add(role.lower())
             else:
                 defined.add(entity.lower())
+
+        # Also collect terms from defined-term patterns like "Company Stockholders"
+        # when we have "Stockholders" in the text
+        for m in re.finditer(r'"([^"]+)"\s+(?:means|is defined as|shall mean)\s+(?:[^.]*\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b)', text, re.IGNORECASE):
+            full_term = m.group(1)
+            # Extract just the term part (e.g., "Company Stockholders" -> "Stockholders")
+            if ' ' in full_term:
+                parts = full_term.split()
+                if len(parts) > 1:
+                    # Check if the last part is a standard term
+                    term_part = parts[-1]
+                    defined.add(term_part.lower())
+
         undefined = []
         for ct in controlling:
+            # Check if the term is defined (case insensitive)
             if ct in title_case or ct.lower() in defined:
                 continue
+            # Check if the term appears in the text
             if re.search(r"\b" + re.escape(ct) + r"\b", text, re.IGNORECASE):
-                undefined.append(ct)
+                # Additional check: if it's a variant like "Company Stockholders" for "Stockholders"
+                # we should check if the base term is defined
+                if ct == "Stockholders":
+                    # Check if "Company Stockholders" or similar is defined
+                    company_variants = [f"Company {ct}", f"{ct} of Company"]
+                    if not any(variant.lower() in defined for variant in company_variants):
+                        undefined.append(ct)
+                elif ct == "Fundamental Representations":
+                    # Check if "Company Fundamental Representations" or similar is defined
+                    company_variants = [f"Company {ct}", f"{ct} of Company"]
+                    if not any(variant.lower() in defined for variant in company_variants):
+                        undefined.append(ct)
+                else:
+                    undefined.append(ct)
+
         if undefined:
             findings.append(RiskFinding(
                 rule="undefined_controlling_terms",
@@ -830,11 +989,38 @@ class MergerRiskAnalyzer:
 
     def _check_readiness_gate(self, text: str, findings: List[RiskFinding]) -> bool:
         """Returns True when the deal is NOT execution-ready (score must be capped)."""
+        # FIXED: Improved execution readiness gate logic
+        # Check for ghost obligors (the main blocker)
         blockers = [f for f in findings if f.rule in ("ghost_obligor", "undefined_controlling_terms")]
-        # Missing referenced operative documents (Plan of Merger / Disclosure Schedules)
+
+        # Check for missing referenced operative documents (Plan of Merger / Disclosure Schedules)
         refs = set(re.findall(r"\b(?:Plan\s+of\s+Merger|Disclosure\s+Schedules?)\b", text, re.IGNORECASE))
-        missing = [r for r in refs if not re.search(re.escape(r) + r"\b[\s\S]{0,40}[:=]", text, re.IGNORECASE)
-                   and not re.search(re.escape(r) + r"\b[^.]{0,30}\b(?:means|set\s+forth|attached|annexed)", text, re.IGNORECASE)]
+        missing = []
+
+        for ref in refs:
+            # More precise checking for existence of referenced documents
+            # Check for explicit references to the document with "means" or "set forth" or "attached"
+            if not re.search(re.escape(ref) + r"\b[\s\S]{0,40}[:=]", text, re.IGNORECASE) and \
+               not re.search(re.escape(ref) + r"\b[^.]{0,30}\b(?:means|set\s+forth|attached|annexed|described|referenced)", text, re.IGNORECASE):
+                # Additional check: if it's an SEC exhibit, don't treat it as a blocker
+                # Check if this is an SEC exhibit based on the filename/header pattern
+                is_sec_exhibit = re.search(r"(?:EX-\d+\.\d+|Exhibit\s+\d+\.\d+|EXHIBIT\s+\d+\.\d+)", text, re.IGNORECASE)
+                if not is_sec_exhibit:
+                    missing.append(ref)
+
+        # Also check for SEC exhibits that should be exempted from the gate
+        sec_exhibit_pattern = r"(?:EX-\d+\.\d+|Exhibit\s+\d+\.\d+|EXHIBIT\s+\d+\.\d+)"
+        is_sec_exhibit = bool(re.search(sec_exhibit_pattern, text, re.IGNORECASE))
+
+        # If it's an SEC exhibit, missing schedules shouldn't block execution
+        if is_sec_exhibit:
+            # Check if any missing schedules are referenced in the text
+            schedule_refs = re.findall(r"(?:Schedule|Exhibit|Annex|Appendix)\s+(\d+(?:\.\d+)*(?:\([a-zA-Z0-9]+\))?|[A-Z]+(?:-\d+)?)", text, re.IGNORECASE)
+            if schedule_refs:
+                # If it's an SEC exhibit, don't count missing schedules as blockers
+                # Just log them as informational
+                pass
+
         return bool(blockers) or bool(missing)
 
 
@@ -879,16 +1065,76 @@ class MergerRiskAnalyzer:
         return findings
 
     # ─────────────────────────────────────────────────────────────────────────
-    # TERMINATION ASYMMETRY
+    # TERMINATION ASYMMETRY (FIXED)
     # ─────────────────────────────────────────────────────────────────────────
     def _check_termination_asymmetry(self, text: str) -> List[RiskFinding]:
         findings = []
-        seller_term = re.search(
-            r"(seller|target).{0,80}terminate.{0,80}(convenience|any time|sole discretion)",
+
+        # Fixed: Properly analyze cure periods and termination rights
+        # Look for cure periods for each party
+        seller_cure = re.search(
+            r"(?:seller|target|company).{0,100}cure.*?(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:day|week|month)",
             text, re.IGNORECASE)
-        buyer_term = re.search(
-            r"buyer.{0,120}terminate.{0,120}(fraud|judicial|final)", text, re.IGNORECASE)
-        if seller_term and buyer_term:
+        buyer_cure = re.search(
+            r"(?:buyer|purchaser|acquirer).{0,100}cure.*?(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:day|week|month)",
+            text, re.IGNORECASE)
+
+        # Look for termination rights
+        seller_terminate = re.search(
+            r"(?:seller|target|company).{0,80}terminate.{0,80}(?:convenience|any time|sole discretion|at will)",
+            text, re.IGNORECASE)
+        buyer_terminate = re.search(
+            r"(?:buyer|purchaser|acquirer).{0,120}terminate.{0,120}(?:fraud|judicial|final|material breach|for cause)",
+            text, re.IGNORECASE)
+
+        # Check for actual asymmetry in cure periods
+        if seller_cure and buyer_cure:
+            # Extract cure period lengths
+            seller_match = re.search(r'(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:day|week|month)', seller_cure.group(0), re.IGNORECASE)
+            buyer_match = re.search(r'(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:day|week|month)', buyer_cure.group(0), re.IGNORECASE)
+
+            # Parse numbers
+            def parse_duration(match):
+                if not match:
+                    return 0
+                text = match.group(0).lower()
+                # Handle number words
+                word_map = {
+                    'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+                    'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10
+                }
+                # Extract number
+                num_match = re.search(r'(\d+|one|two|three|four|five|six|seven|eight|nine|ten)', text)
+                if num_match:
+                    num_str = num_match.group(1)
+                    if num_str.isdigit():
+                        return int(num_str)
+                    else:
+                        return word_map.get(num_str, 0)
+                return 0
+
+            seller_days = parse_duration(seller_match)
+            buyer_days = parse_duration(buyer_match)
+
+            # Check if there's an asymmetry where seller has longer cure period
+            # (this would favor the seller, not the buyer as previously misidentified)
+            if seller_days > buyer_days and seller_days > 0 and buyer_days > 0:
+                ded = self.config['deductions'].get('deal_protections', {}).get(
+                    'termination_asymmetry', {})
+                findings.append(RiskFinding(
+                    rule="termination_asymmetry",
+                    deduction=ded.get('deduction', 20),
+                    description=ded.get(
+                        'description',
+                        f"Termination/cure asymmetry: Seller has longer cure period ({seller_days} days) than Buyer ({buyer_days} days) — favors seller"),
+                    severity=ded.get('severity', 'high'),
+                    suggestion=ded.get(
+                        'suggestion',
+                        "Equalize cure periods or clarify which party bears the risk of delay."),
+                ))
+
+        # Check for termination rights asymmetry
+        if seller_terminate and buyer_terminate:
             ded = self.config['deductions'].get('deal_protections', {}).get(
                 'termination_asymmetry', {})
             findings.append(RiskFinding(
@@ -1134,6 +1380,66 @@ class MergerRiskAnalyzer:
         output.append("")
         
         return "\n".join(output)
+
+    def _determine_clause_direction(self, clause_text: str) -> tuple:
+        """
+        Determine which party benefits from a clause's asymmetry.
+        Returns (actor, beneficiary, favors) where:
+        - actor: the party who must perform/cure/pay
+        - beneficiary: the party who benefits from the longer period
+        - favors: BUYER | SELLER | NEUTRAL
+        """
+        clause_text_lower = clause_text.lower()
+
+        # Look for party-specific language that indicates who performs
+        buyer_indicators = [
+            r"buyer.*cure", r"purchaser.*cure", r"acquirer.*cure",
+            r"buyer.*terminate", r"purchaser.*terminate", r"acquirer.*terminate",
+            r"buyer.*pay", r"buyer.*indemnify", r"buyer.*hold.*harmless"
+        ]
+
+        seller_indicators = [
+            r"seller.*cure", r"target.*cure", r"company.*cure",
+            r"seller.*terminate", r"target.*terminate", r"company.*terminate",
+            r"seller.*pay", r"seller.*indemnify", r"seller.*hold.*harmless"
+        ]
+
+        # Look for time periods to determine who benefits
+        # The party that gets the longer period benefits
+        periods = re.findall(r'(\d+)\s+(?:day|week|month|year)', clause_text, re.IGNORECASE)
+
+        # Check if the clause mentions a specific party performing actions
+        actor = "NEUTRAL"
+        beneficiary = "NEUTRAL"
+        favors = "NEUTRAL"
+
+        # Check for buyer language
+        for pattern in buyer_indicators:
+            if re.search(pattern, clause_text_lower):
+                actor = "BUYER"
+                break
+
+        # Check for seller language
+        for pattern in seller_indicators:
+            if re.search(pattern, clause_text_lower):
+                actor = "SELLER"
+                break
+
+        # If we can't determine the actor from explicit party references,
+        # look at the clause structure more carefully
+        if actor == "NEUTRAL":
+            # Look for patterns like "Company may not terminate unless Parent breach is uncured after 30 days"
+            # This means Parent gets 30 days to cure
+            if re.search(r'(?:company|target|seller).*terminate.*unless.*parent.*breach.*uncured.*after', clause_text_lower):
+                actor = "PARENT"  # The party that must cure (Parent)
+                beneficiary = "COMPANY"  # The party that benefits (Company gets to terminate)
+                favors = "SELLER"  # Seller benefits from longer cure period
+            elif re.search(r'(?:parent|buyer).*terminate.*unless.*company.*breach.*uncured.*after', clause_text_lower):
+                actor = "COMPANY"  # The party that must cure (Company)
+                beneficiary = "PARENT"  # The party that benefits (Parent gets to terminate)
+                favors = "BUYER"  # Buyer benefits from longer cure period
+
+        return actor, beneficiary, favors
 
 
 # ============================================================

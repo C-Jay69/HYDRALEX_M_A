@@ -4,7 +4,7 @@
 
 \#\# 1\. Product Overview
 
-Hydraforge is a production-grade, enterprise-facing web platform for M\&A legal document verification. Users upload PDF legal documents and receive a triple-layer AI analysis: three independent Claude passes, each with a distinct analytical role, culminating in an authoritative consensus report with risk scoring, clause-by-clause breakdown, and executive summary.
+HydraLex is a production-grade, enterprise-facing web platform for M\&A legal document verification. Users upload PDF legal documents and receive a triple-layer AI analysis: three independent Claude passes, each with a distinct analytical role, culminating in an authoritative consensus report with risk scoring, clause-by-clause breakdown, and executive summary.
 
 \*\*Target market:\*\* M\&A law firms, in-house M\&A teams at PE firms and strategic acquirers, boutique M\&A advisory shops, independent practitioners.
 

@@ -1,0 +1,178 @@
+# ASSET PURCHASE AND MERGER AGREEMENT
+
+**Between: Acme Industries Ltd. ("Buyer")**  
+**And: TechVenture Solutions Inc. ("Seller")**
+
+**Effective Date: December 15, 2024**
+
+---
+
+## 1. TRANSACTION STRUCTURE
+
+This Agreement governs the acquisition by Buyer of substantially all operating assets and assumption of certain liabilities of Seller. The transaction shall be structured as an asset purchase with merger characteristics for accounting purposes.
+
+**1.1 Assets Included**  
+All tangible and intangible assets necessary for business operations, including but not limited to equipment, inventory, contracts, and intellectual property rights, except as specifically excluded in Section 1.3.
+
+**1.2 Liabilities Assumed**  
+Buyer agrees to assume ordinary course trade payables not exceeding $2.3 million in aggregate, subject to adjustment at closing based on Seller's calculations.
+
+**1.3 Excluded Assets**  
+Certain legacy contracts, the details of which are being compiled and will be provided no later than 10 business days post-closing.
+
+---
+
+## 2. PURCHASE CONSIDERATION
+
+**Total Purchase Price: $67,500,000**
+
+- **$35,000,000** payable in cash at closing
+- **$18,000,000** in Buyer common stock (calculated using a 20-day VWAP ending 5 days prior to closing)
+- **$14,500,000** as earnout consideration over 36 months, based on achievement of revenue targets to be mutually agreed upon within 90 days of closing
+
+**2.1 Working Capital Adjustment**  
+Purchase price is subject to post-closing adjustment based on estimated working capital of $8.2 million. Any disputes regarding final working capital shall be resolved by an accounting firm selected by Buyer.
+
+**2.2 Escrow**  
+$4,000,000 of the cash consideration shall be held in escrow for 18 months to secure Seller's indemnification obligations, with any unclaimed amounts released to Seller thereafter, except for pending claims.
+
+---
+
+## 3. REPRESENTATIONS AND WARRANTIES
+
+**3.1 Financial Statements**  
+Seller represents that unaudited financial statements provided represent the financial position of the company as of September 30, 2024. Certain reconciliations between management accounts and tax returns are still being finalized.
+
+**3.2 Material Contracts**  
+Seller has provided copies or summaries of all material contracts. Approximately 12-15 customer contracts (representing an estimated 18% of revenue) are in the process of being renewed and will be made available when executed.
+
+**3.3 Litigation and Claims**  
+There are no material pending or threatened legal proceedings, except for routine employment matters and one customer dispute involving approximately $850,000, which Seller believes is without merit and adequately reserved for.
+
+**3.4 Compliance**  
+Seller is in compliance in all material respects with applicable laws and regulations. Certain environmental assessments for two facility locations were conducted in 2019 and showed no significant issues at that time.
+
+**3.5 Intellectual Property**  
+Seller owns or has rights to use all material IP. Certain software components incorporate open-source code under licenses believed to permit commercial use. Two patent applications are pending, though approval is not guaranteed.
+
+**3.6 Employee Matters**  
+No employees have indicated intention to terminate employment. Seller has been informed that certain key employees have expressed general interest in exploring opportunities but have made no firm commitments.
+
+**3.7 Customer Relationships**  
+Top 10 customers represent approximately 68% of trailing twelve-month revenue. Management believes these relationships are strong and expects continuity post-transaction.
+
+**3.8 Data Security**  
+Seller maintains reasonable cybersecurity measures. There was an incident in Q2 2024 that resulted in limited unauthorized access to certain non-critical systems, which was remediated promptly and is not believed to have resulted in material data loss.
+
+---
+
+## 4. COVENANTS AND AGREEMENTS
+
+**4.1 Conduct of Business**  
+Between signing and closing, Seller shall operate in the ordinary course consistent with past practice. Seller may take actions reasonably necessary to respond to business conditions without prior consent if delays would be commercially unreasonable.
+
+**4.2 Non-Competition**  
+Key Seller principals agree not to compete within the same industry for a period of 3 years within North America, except for investments not exceeding 5% in publicly traded companies.
+
+**4.3 Employee Retention**  
+Buyer shall offer employment to substantially all current employees on terms reasonably comparable to current arrangements. No guarantees are made regarding specific compensation levels beyond 90 days post-closing.
+
+**4.4 Regulatory Approvals**  
+Parties shall cooperate to obtain necessary approvals. Certain foreign investment approvals may be required depending on final transaction structure, to be determined.
+
+---
+
+## 5. CONDITIONS TO CLOSING
+
+**5.1 Due Diligence**  
+Buyer's obligation to close is subject to completion of confirmatory due diligence, the scope and timeline of which shall be reasonable under the circumstances.
+
+**5.2 Material Adverse Effect**  
+No Material Adverse Effect shall have occurred. For purposes of this Agreement, "Material Adverse Effect" means any event, change, or effect that is materially adverse to the business, financial condition, or results of operations, as reasonably determined by Buyer.
+
+**5.3 Third-Party Consents**  
+All material third-party consents shall be obtained, or Buyer shall have determined that the failure to obtain such consents would not reasonably be expected to have a Material Adverse Effect.
+
+---
+
+## 6. INDEMNIFICATION
+
+**6.1 Survival**  
+Representations and warranties shall survive closing for 12 months, except for tax matters (4 years) and fundamental representations (3 years).
+
+**6.2 Indemnification Caps**  
+Seller's indemnification obligations shall not exceed the escrow amount ($4,000,000) except for fraud, willful misconduct, or fundamental representations, which shall be capped at 50% of the purchase price.
+
+**6.3 Basket and Threshold**  
+No indemnification claims may be brought unless aggregate losses exceed $350,000 (at which point all losses from the first dollar are recoverable), except for claims exceeding $750,000 individually, which are not subject to the basket.
+
+**6.4 Exclusive Remedy**  
+Indemnification shall be the exclusive remedy for breaches, except in cases of intentional fraud or criminal conduct.
+
+---
+
+## 7. TAX MATTERS
+
+**7.1 Tax Returns**  
+Seller represents that all material tax returns have been filed. Tax years 2021 and 2022 are under routine examination by the IRS, which is expected to conclude without material adjustments. Certain state tax positions taken may be subject to challenge but are supported by reasonable interpretations of law.
+
+**7.2 Tax Allocations**  
+Purchase price allocation among assets shall be prepared by Buyer and provided to Seller. Seller shall not be required to consent but agrees not to take inconsistent positions unless advised to do so by its tax advisors.
+
+---
+
+## 8. TERMINATION
+
+**8.1 Termination Rights**  
+Either party may terminate if closing does not occur by March 31, 2025, unless the failure to close is due to that party's breach.
+
+**8.2 Break-Up Fee**  
+If Buyer terminates due to acceptance of a superior proposal by Seller, Seller shall pay Buyer a fee of $2,000,000. If Seller terminates due to Buyer's failure to obtain financing, Buyer shall pay Seller a fee of $1,500,000.
+
+---
+
+## 9. MISCELLANEOUS
+
+**9.1 Governing Law**  
+This Agreement shall be governed by the laws of Delaware, without regard to conflicts of law principles.
+
+**9.2 Dispute Resolution**  
+Any disputes arising from this Agreement shall be resolved through binding arbitration in Bermuda under the rules of the International Chamber of Commerce. Each party shall bear its own costs, and the arbitrator's decision shall be final and non-appealable.
+
+**9.3 Confidentiality**  
+All terms of this Agreement shall remain confidential. Any unauthorized disclosure shall result in liquidated damages of $250,000 per incident, without need to prove actual damages.
+
+**9.4 Entire Agreement**  
+This Agreement, together with schedules and exhibits (some of which are still being finalized), constitutes the entire agreement between the parties.
+
+**9.5 Amendment**  
+This Agreement may be amended by written consent of both parties, or by Buyer alone for ministerial corrections or clarifications that do not materially affect Seller's rights.
+
+---
+
+## SIGNATURES
+
+**FOR BUYER:**  
+Acme Industries Ltd.
+
+By: ___________________________  
+Name: Robert Chen  
+Title: Chief Acquisition Officer  
+Date: December 15, 2024
+
+**FOR SELLER:**  
+TechVenture Solutions Inc.
+
+By: ___________________________  
+Name: Patricia Rodriguez  
+Title: CEO  
+Date: December 15, 2024
+
+---
+
+**SCHEDULES:**
+- Schedule A: List of Material Contracts (being finalized)
+- Schedule B: Employee Census (as of November 30, 2024)
+- Schedule C: Excluded Assets (to be provided)
+- Schedule D: Pending Litigation Summary
+- Schedule E: IP Registration Details
