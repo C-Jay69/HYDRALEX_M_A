@@ -164,8 +164,22 @@ async def analyze_document(
     # Analyze
     options = options or AnalyzeOptions()
     
-    # Analyze with risk level override
     result = analyzer.analyze(text, document_name=file.filename)
+
+    # Convert findings to dicts for JSON serialization (RiskFinding dataclasses)
+    findings_dicts = []
+    for f in result.findings:
+        fd = {
+    "rule": f.rule,
+    "deduction": f.deduction,
+    "description": f.description,
+    "severity": f.severity,
+    }
+    if f.location is not None:
+        fd["location"] = f.location
+    if f.suggestion is not None:
+        fd["suggestion"] = f.suggestion
+    findings_dicts.append(fd)
     
     # Build response
     response = AnalysisResponse(
@@ -180,7 +194,7 @@ async def analyze_document(
             "risk_level": result.risk_level,
             "recommendation": result.recommendation
         },
-        findings=result.findings if options.include_detailed_findings else [],
+        findings=findings_dicts if options.include_detailed_findings else [],
         interaction_stacks=result.interaction_stacks_triggered,
         must_fix=result.must_fix_items,
         arbitration_threshold=result.arbitration_threshold
