@@ -81,12 +81,13 @@ async def health_check():
 async def analyze_document(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = None,
-    options: AnalyzeOptions = None
+    options: AnalyzeOptions = None,
     survival_period_override_months: Optional[int] = None,
     indemnification_cap_pct_override: Optional[float] = None,
     indemnification_basket_pct_override: Optional[float] = None,
     earnout_metric_override: Optional[str] = None,
     risk_level_override: Optional[str] = None,
+    output_sections: Optional[List[str]] = None,
 ):
     """
     Analyze a merger agreement document
@@ -141,8 +142,29 @@ async def analyze_document(
     if not text.strip():
         raise HTTPException(status_code=400, detail="No text extracted from document")
     
+    # Parse risk_level_override JSON if provided
+    risk_level_override_dict = None
+    if risk_level_override is not None:
+        import json
+        try:
+            risk_level_override_dict = json.loads(risk_level_override)
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid risk_level_override JSON format. Expected format: '{\"minimal\": [85, 100], \"low\": [70, 84]}'"
+            )
+    
+    # Apply risk level override to the analyzer (module-level singleton)
+    # Apply output sections customization
+    if output_sections is not None:
+        analyzer.output_sections = output_sections
+    if risk_level_override_dict is not None:
+        analyzer.risk_level_override = risk_level_override_dict
+    
     # Analyze
     options = options or AnalyzeOptions()
+    
+    # Analyze with risk level override
     result = analyzer.analyze(text, document_name=file.filename)
     
     # Build response
