@@ -18,3 +18,4 @@ packages/desktop/dist-electron/
 packages/web/local.db
 packages/web/check_*.ts
 packages/web/package-lock.json
+hydralex_ma.zip
