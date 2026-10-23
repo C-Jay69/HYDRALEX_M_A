@@ -34,6 +34,15 @@ class EntityType(Enum):
     FINANCIAL_TERM = "financial_term"
     METRIC = "metric"
     SURVIVAL_PERIOD = "survival_period"
+    HSR_THRESHOLD = "hsr_threshold"
+    CFIUS_FLAG = "cfius_flag"
+    FCPA_RED_FLAG = "fcpa_red_flag"
+    EXPORT_CONTROL = "export_control"
+    PRIVACY_LAW_INDICATOR = "privacy_law_indicator"
+    JURISDICTIONAL_FLAG = "jurisdictional_flag"
+    GOVERNING_LAW = "governing_law"
+    RELATED_AGREEMENT = "related_agreement"
+    VERSION_STATUS = "version_status"
 
 
 class RelationshipType(Enum):
@@ -75,9 +84,16 @@ class KGNode:
     source_section: str = ""
     source_document: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+    tooltip: str = ""  # Hover tooltip text
 
     def get_label(self) -> str:
         return f"[{self.entity_type.value}] {self.name}"
+
+    def get_tooltip(self) -> str:
+        """Get tooltip text for this node."""
+        if self.tooltip:
+            return self.tooltip
+        return f"{self.entity_type.value}: {self.name}"
 
 
 @dataclass
@@ -89,6 +105,13 @@ class KGEdge:
     confidence: float = 1.0  # 0.0 to 1.0
     evidence: str = ""  # Text excerpt supporting this edge
     source_section: str = ""
+    tooltip: str = ""  # Hover tooltip text
+
+    def get_tooltip(self) -> str:
+        """Get tooltip text for this edge."""
+        if self.tooltip:
+            return self.tooltip
+        return f"{self.relationship.value} relationship"
 
 
 class KnowledgeGraph:
@@ -709,6 +732,13 @@ class KnowledgeGraph:
 DEFINED_TERM_PATTERNS = [
     r"['\"]?(\w[\w\s]{2,40})['\"]?\s*(?:means|defined as|is defined as|shall mean)\s",
     r"(\w[\w\s]{1,30})\s*\(as\s*defined\s*in\s*(?:Section|§)\s*[\d.]+\)",
+    # Regulatory term patterns
+    r"('|(\w[\w\s]{2,40}))\s*(?:HSR|hsr)\s*(?:threshold|filing|value)\s",
+    r"('|(\w[\w\s]{2,40}))\s*(?:CFIUS|cfi-us)\s*(?:review|investment|foreign)",
+    r"('|(\w[\w\s]{2,40}))\s*(?:FCPA|fcpa)\s*(?:red flag|violation|compliance)",
+    r"('|(\w[\w\s]{2,40}))\s*(?:EAR|itr|export)\s*(?:control|classification)",
+    r"('|(\w[\w\s]{2,40}))\s*(?:GDPR|ccpa|privacy|data subject)",
+    r"('|(\w[\w\s]{2,40}))\s*(?:Delaware|New York|English law|Swiss law)\s*(?:governing|law)",
 ]
 
 PARTY_PATTERNS = [
@@ -721,6 +751,7 @@ REGULATORY_BODIES = [
     "SEC", "FTC", "DOJ", "CFIUS", "OFAC", "FCPA", "PCAOB", "FINRA", "OCC", "FDIC",
     "CFTC", "FCC", "FDA", "HIPAA", "GDPR", "CCPA", "SOX", "FASB", "GAAP", "IRS",
     "Treasury", "BIS", "DEA", "EPA", "OSHA", "DOL", "NLRB",
+    "HSR", "CFIUS_AGENCY", "FCPA_ENFORCER", "BIS_EXPORT", "EUA", "PECB",
 ]
 
 
@@ -753,6 +784,7 @@ def build_knowledge_graph_from_text(text: str, document_name: str = "document") 
                     entity_type=EntityType.DEFINED_TERM,
                     source_document=document_name,
                     source_section=match.group(0)[:100],
+                    tooltip=f"Defined term: {term_name} — describes a specific contractual concept"
                 ))
 
     # ── Extract party names ────────────────────────────────────────
@@ -776,6 +808,7 @@ def build_knowledge_graph_from_text(text: str, document_name: str = "document") 
                 kg.add_node(KGNode(
                     id=party_id, name=canon,
                     entity_type=EntityType.PARTY, source_document=document_name,
+                    tooltip=f"Party: {canon} — involved in the merger transaction"
                 ))
 
     # ── Extract representations (general, tax, fundamental) ───────
@@ -916,6 +949,153 @@ def build_knowledge_graph_from_text(text: str, document_name: str = "document") 
             source_section=match.group(0),
         ))
 
+    # ── Extract regulatory entities ────────────────────────────────
+    text_lower = text.lower()
+
+    # --- HSR Threshold Detection ---
+    hsr_threshold_patterns = [
+        r'(?:transaction value|size of person|annual net sales).{0,200}\$?\s*[\d,.]+\s*(?:million|billion)',
+        r'HSR.{0,50}threshold.{0,100}',
+        r'111\.1.{0,100}million',
+        r'trigger.{0,50}HSR|HSR.{0,50}trigger',
+    ]
+    for pattern in hsr_threshold_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE | re.DOTALL):
+            start = max(0, match.start() - 50)
+            end = min(len(text), match.end() + 100)
+            context = text[start:end].strip()
+            node_id = f"hsr:{match.group(0)[:50].lower().replace(' ', '_')}"
+            kg.add_node(KGNode(
+                id=node_id,
+                name=f"HSR Threshold Detection",
+                entity_type=EntityType.HSR_THRESHOLD,
+                content=context[:200],
+                source_document=document_name,
+                source_section=match.group(0)[:100],
+            ))
+            # Link to parties if mentioned
+            for party_id in [n_id for n_id in kg.nodes if kg.nodes[n_id].entity_type == EntityType.PARTY]:
+                kg.add_edge(
+                    source_id=party_id,
+                    target_id=node_id,
+                    relationship=RelationshipType.REGULATED_BY,
+                    evidence=f"HSR threshold analysis for {kg.nodes[party_id].name}",
+                    source_section="regulatory_extraction",
+                )
+
+    # --- CFIUS Flag Detection ---
+    cfius_patterns = [
+        r'foreign person|outside US|non-US acquiror',
+        r'CFIUS|national security|foreign government',
+        r'travel restrictions|access limitations|personal data transfers',
+    ]
+    for pattern in cfius_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE | re.DOTALL):
+            start = max(0, match.start() - 50)
+            end = min(len(text), match.end() + 100)
+            context = text[start:end].strip()
+            node_id = f"cfius:{match.group(0)[:50].lower().replace(' ', '_')}"
+            kg.add_node(KGNode(
+                id=node_id,
+                name=f"CFIUS Flag",
+                entity_type=EntityType.CFIUS_FLAG,
+                content=context[:200],
+                source_document=document_name,
+                source_section=match.group(0)[:100],
+            ))
+            # Link to parties if non-US mentioned
+            if re.search(r'non-US|outside US|foreign', pattern, re.IGNORECASE):
+                for party_id in [n_id for n_id in kg.nodes if kg.nodes[n_id].entity_type == EntityType.PARTY]:
+                    kg.add_edge(
+                        source_id=party_id,
+                        target_id=node_id,
+                        relationship=RelationshipType.GOVERNED_BY,
+                        evidence=f"CFIUS flag analysis for {kg.nodes[party_id].name}",
+                        source_section="regulatory_extraction",
+                    )
+
+    # --- FCPA Red Flag Detection ---
+    fcpa_patterns = [
+        r'foreign official|government action|travel and entertainment',
+        r'facilitation payments|undisclosed agents|third-party consultants',
+        r'knowledge of|willful|conscious disregard',
+    ]
+    for pattern in fcpa_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE | re.DOTALL):
+            start = max(0, match.start() - 50)
+            end = min(len(text), match.end() + 100)
+            context = text[start:end].strip()
+            node_id = f"fcpa:{match.group(0)[:50].lower().replace(' ', '_')}"
+            kg.add_node(KGNode(
+                id=node_id,
+                name=f"FCPA Red Flag",
+                entity_type=EntityType.FCPA_RED_FLAG,
+                content=context[:200],
+                source_document=document_name,
+                source_section=match.group(0)[:100],
+            ))
+
+    # --- Export Control Detection ---
+    export_control_patterns = [
+        r'\bEAR\b.{0,100}|\\bITAR\\b.{0,100}',
+        r'licensing requirements|dual-use technology',
+        r'\bdeemed exports\b|\\btechnical data\b|\\bdefense articles\b',
+    ]
+    for pattern in export_control_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE | re.DOTALL):
+            start = max(0, match.start() - 50)
+            end = min(len(text), match.end() + 100)
+            context = text[start:end].strip()
+            node_id = f"export:{match.group(0)[:50].lower().replace(' ', '_')}"
+            kg.add_node(KGNode(
+                id=node_id,
+                name=f"Export Control",
+                entity_type=EntityType.EXPORT_CONTROL,
+                content=context[:200],
+                source_document=document_name,
+                source_section=match.group(0)[:100],
+            ))
+
+    # --- Privacy Law Indicator Detection ---
+    privacy_patterns = [
+        r'GDPR.{0,100}|CCPA.{0,100}|PIPEDA.{0,100}',
+        r'international transfer|cross-border data|data subject',
+        r'personal data|processing|data controller|data processor',
+    ]
+    for pattern in privacy_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE | re.DOTALL):
+            start = max(0, match.start() - 50)
+            end = min(len(text), match.end() + 100)
+            context = text[start:end].strip()
+            node_id = f"privacy:{match.group(0)[:50].lower().replace(' ', '_')}"
+            kg.add_node(KGNode(
+                id=node_id,
+                name=f"Privacy Law Indicator",
+                entity_type=EntityType.PRIVACY_LAW_INDICATOR,
+                content=context[:200],
+                source_document=document_name,
+                source_section=match.group(0)[:100],
+            ))
+
+    # --- Jurisdictional Flag Detection ---
+    jurisdictional_patterns = [
+        r'Delaware|New York|English law|Swiss law|Singapore International Arbitration Centre',
+    ]
+    for pattern in jurisdictional_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            start = max(0, match.start() - 50)
+            end = min(len(text), match.end() + 100)
+            context = text[start:end].strip()
+            node_id = f"jurisdiction:{match.group(0)[:50].lower().replace(' ', '_')}"
+            kg.add_node(KGNode(
+                id=node_id,
+                name=f"Jurisdictional Flag: {match.group(0).strip()}",
+                entity_type=EntityType.JURISDICTIONAL_FLAG,
+                content=context[:200],
+                source_document=document_name,
+                source_section=match.group(0)[:100],
+            ))
+
     # ── Add key relationships ────────────────────────────────────────
     # 1. Defined terms referenced in the document
     for term_node_id in [n_id for n_id in kg.nodes if kg.nodes[n_id].entity_type == EntityType.DEFINED_TERM]:
@@ -981,6 +1161,128 @@ def build_knowledge_graph_from_text(text: str, document_name: str = "document") 
                 evidence="Fundamental representations survival period",
                 source_section="taxonomy",
             )
+
+    # ── Extract governing law ────────────────────────────────────────
+    # Look for: "governing by the laws of", "this agreement shall be governed", "jurisdiction"
+    text_lower = text.lower()
+    governing_law = "not specified"
+    specific_laws = ['delaware', 'new york', 'california', 'texas', 'london', 'england', 'uk']
+
+    governing_law_patterns = [
+        r'governing\s+by\s+the\s+laws\s+of\s+([^\.]{0,100})',
+        r'this\s+agreement\s+shall\s+be\s+governed\s+by\s+the?\s+laws\s+of\s+([^\.]{0,100})',
+        r'governed\s+by\s+the?\s+laws\s+of\s+([^\.]{0,100})',
+        r'governed\s+by\s+and\s+construed\s+in\s+accordance\s+with\s+the\s+laws\s+of\s+([^\.]{0,100})',
+        r'jurisdiction\s+([^\.]{0,100})',
+    ]
+
+    for pattern in governing_law_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            law = match.group(1).strip().rstrip(';,.')
+            law_lower = law.lower()
+            for specific in specific_laws:
+                if law_lower.startswith(specific) or law_lower == specific:
+                    governing_law = law
+                    break
+            if governing_law == "not specified" and law:
+                governing_law = law
+            break
+
+    # Add governing law node
+    kg.add_node(KGNode(
+        id=f"law:{governing_law.lower().replace(' ', '_').replace('.', '')}",
+        name=governing_law if governing_law != "not specified" else "No governing law specified",
+        entity_type=EntityType.GOVERNING_LAW,
+        content=f"Governing law for {document_name}",
+        source_document=document_name,
+    ))
+
+    # Add governing law edge to document
+    doc_node_id = f"doc:{document_name}"
+    kg.add_edge(
+        source_id=f"law:{governing_law.lower().replace(' ', '_').replace('.', '')}" if governing_law != "not specified" else doc_node_id,
+        target_id=doc_node_id,
+        relationship=RelationshipType.GOVERNED_BY,
+        evidence=f"Governing law: {governing_law}",
+        source_section="governing_law_clause",
+    )
+
+    # ── Extract related agreements ────────────────────────────────────
+    # Detect: "ancillary agreements", "side letters", "deed of adherence", "transition agreement"
+    #          "deed of transfer", "bill of sale", "Assignment and Assumption Agreement"
+    related_agreement_patterns = [
+        r'ancillary\s+agreement',
+        r'side\s+letter',
+        r'deed\s+of\s+adherence',
+        r'transition\s+agreement',
+        r'deed\s+of\s+transfer',
+        r'bill\s+of\s+sale',
+        r'assignment\s+and\s+assumption',
+    ]
+
+    found_agreements: set = set()
+    for pattern in related_agreement_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            found_agreements.add(match.group(0).strip())
+
+    # Add related agreement nodes
+    for agreement_text in found_agreements:
+        agreement_id = f"agreement:{agreement_text.lower().replace(' ', '_').replace('.', '')}"
+        kg.add_node(KGNode(
+            id=agreement_id,
+            name=agreement_text,
+            entity_type=EntityType.RELATED_AGREEMENT,
+            content=f"Related agreement detected in {document_name}",
+            source_document=document_name,
+        ))
+        # Link related agreement to document
+        kg.add_edge(
+            source_id=agreement_id,
+            target_id=doc_node_id,
+            relationship=RelationshipType.REFERENCES,
+            evidence=f"Related agreement: {agreement_text}",
+            source_section="related_agreements",
+        )
+
+    # If no related agreements found, still add a marker node
+    if not found_agreements:
+        kg.add_node(KGNode(
+            id=f"agreement:none:{document_name}",
+            name="No related agreements detected",
+            entity_type=EntityType.RELATED_AGREEMENT,
+            content="No ancillary/side agreements/related agreements found in document",
+            source_document=document_name,
+        ))
+
+    # ── Extract version status ────────────────────────────────────────
+    # Detect execution status: "executed", "effective", "draft", "negotiation", "pending"
+    # Look for: "date of execution", "effective date", "parties agree", "subject to contract"
+    #          "counterparts", "execution copy", "original signed copy"
+    text_lower = text.lower()
+    version_status = "draft"  # default
+
+    # Check for "executed" indicators
+    if re.search(r'\b(date\s+of\s+execution|execution\s+date|parties\s+agree|subject\s+to\s+contract)\b', text_lower):
+        version_status = "executed"
+    # Check for "effective date"
+    elif re.search(r'\beffective\s+date\b', text_lower):
+        version_status = "effective"
+    # Check for "counterparts" or "execution copy"
+    elif re.search(r'\bcounterparts\b', text_lower) or re.search(r'\bexecution\s+copy\b', text_lower):
+        version_status = "executed"
+    # Check for negotiation/pending indicators
+    elif re.search(r'\bnegotiat\w*\b', text_lower) or re.search(r'\bpending\b', text_lower):
+        version_status = "negotiation" if re.search(r'\bnegotiat\w*\b', text_lower) else "pending"
+    else:
+        version_status = "draft"
+
+    # Store version status as metadata on the document node
+    for node in kg.nodes.values():
+        if node.entity_type == EntityType.DOCUMENT:
+            node.metadata["version_status"] = version_status
+            node.metadata["execution_status"] = version_status
+            break
 
     # ── Detect dead-definition false positives ─────────────────────
     kg.dead_definition_findings = kg.detect_missing_links(text)

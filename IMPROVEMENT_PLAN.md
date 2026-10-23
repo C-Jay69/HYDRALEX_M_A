@@ -1,125 +1,132 @@
-# M&A Contract Analyzer Improvement Plan
+# Agent G - UI/UX Improvements Implementation Plan
 
 ## Overview
-Based on analysis of 4 contract types from the HYDRALEX M&A project, this plan identifies specific areas where the merger risk analyzer accuracy can be improved.
+Implementing UI/UX enhancements for Professional and Enterprise tiers of the HYDRALEX M&A contract analyzer.
 
-## Current Performance Summary
+## Phase 1: What-If Scenarios (Professional Tier)
 
-| Contract Type | Raw Score | Final Score | Critical Issues |
-|--------------|-----------|-------------|-----------------|
-| Asset Purchase (ma_agreement_v1.txt) | 24/100 | 34/100 | Missing indemnification framework, undefined terms |
-| Clean Merger (clean_merger.pdf) | 9/100 | 24/100 | Section mismatches, missing cap/survival |
-| Real M&A (caesars_eldorado_merger.pdf) | 1/100 | 8/100 | Complete tax silence, no indemnification |
-| Hostile Merger (hostile_merger.pdf) | 0/100 | 5/100 | Basket above cap, no fraud carve-out, undefined metrics |
+### 1.1 Adjustable Survival Periods
+- Add `survival_period_override` parameter to `MergerRiskAnalyzer.__init__()`
+- Default: `None` (use detected value from document)
+- Range: 6-60 months (12-36 month toggle for Professional)
+- Recalculate risk score when overridden
+- Save preference to user profile
 
-## Priority Improvements
+### 1.2 Adjustable Caps/Baskets
+- Add `indemnification_cap_pct` and `indemnification_basket_pct` parameters
+- Default: `None` (use detected values from document)
+- Cap range: 5-50%; Basket range: 0.5-5%
+- Recalculate deduction when overridden
+- Professional tier: user-adjustable; Enterprise: firm-preset
 
-### 1. Tax Survival Period Classification (HIGH Impact)
-**Problem**: The analyzer currently doesn't distinguish between:
-- General representations survival (12-24 months)
-- Tax representations survival (statute of limitations + 60 days)
-- Fundamental representations survival (indefinite)
+### 1.3 Adjustable Earnout Metrics
+- Add `earnout_metric` parameter with options: `Revenue`, `EBITDA`, `Gross Profit`, `Net Income`, `Cash Flow`
+- Default: `None` (use detected metric from document)
+- Recalculate `undefined_metrics` finding severity when overridden
+- If user selects a metric that IS in the document, remove the `undefined_metrics` deduction
 
-**Current behavior**: Flags all survival periods < 365 days as "too short" without categorization
+### 1.4 Real-Time Score Recalculation
+- Add `recalculate_score()` method that re-runs key checks with overridden parameters
+- Return adjusted `final_score` and modified `findings`
 
-**Improvement**: Add taxonomy for survival period types with different thresholds:
-- General reps: 12-24 months (flag if < 12 months)
-- Tax reps: SOL + 60 days (flag if < SOL + 60 days)  
-- Fundamental reps: Indefinite (flag if any finite period)
+### 1.5 Save User Preferences
+- Store override values in user profile/settings
+- Persist across sessions
 
-**Code location**: `packages/python-engine/merger_risk_analyzer.py` `_check_indemnity_economics()` method
+## Phase 2: Interactive Output Customization (Professional Tier)
 
-### 2. Earnout Metric Definition Parsing (HIGH Impact)
-**Problem**: The analyzer correctly flags undefined metrics but doesn't parse or validate when metrics ARE defined
+### 2.1 Report Section Toggle System
+- Define 10+ output sections: `risk_score`, `executive_summary`, `defined_terms`, `covenants`, `indemnification`, `survival_periods`, `earnout`, `regulatory`, `disclosures`, `boilerplate`
+- Add `output_sections` parameter to `format_output()` 
+- Default: all sections shown
+- User preferences saved to profile
+- Checkbox-based MVP (can extend to drag-and-drop)
 
-**Improvement**: 
-- Add metric extraction logic to identify defined metrics and their types
-- Distinguish between Revenue, EBITDA, Gross Profit, Net Income targets
-- Check for minimum required fields: target values, measurement period, calculation methodology
+### 2.2 Output Customization Implementation
+- Modify `MergerRiskAnalyzer.format_output()` to accept `sections` parameter
+- Each section has a boolean flag showing/hiding it
+- Section ordering preserved per user preference
 
-**Code location**: `packages/python-engine/merger_risk_analyzer.py` `_check_earnout()` method
+## Phase 3: Enterprise Tier White-Label
 
-### 3. Fraud Carve-Out Detection Refinement (MEDIUM Impact)
-**Problem**: The analyzer flags "all claims" language sweeping fraud under the cap, but doesn't distinguish:
-- Affirmative "carve-out is limited" language
-- Mere omission of fraud carve-out in otherwise standard language
+### 3.1 Section Reordering
+- 18 report sections (extending the Professional 10 with: `party_integrity`, `formation_validity`, `arbitration`, `strengths`, `missed_items`, `must_fix`, `adjusted_score`)
+- Drag-and-drop or reorder control in UI
+- User-saved template persists
 
-**Improvement**: 
-- Add detection for explicit fraud carve-out language: "shall not apply to fraud", "except for fraud", "uncapped for fraud"
-- Only flag when the cap language AFFIRMATIVELY sweeps fraud under it
-- Allow for standard language where fraud carve-out is implied by default
+### 3.2 Custom Commentary Sections
+- Allow users to add free-text commentary that appears in the report
+- Persist commentary per document/analysis
 
-**Code location**: `packages/python-engine/merger_risk_analyzer.py` `_check_indemnity_economics()` method, fraud carve-out section
+### 3.3 Save Custom Report Templates
+- Users can save named templates with section selections, order, and branding
+- Load/save from profile
 
-### 4. Escrow vs Termination Fee Distinction (MEDIUM Impact)
-**Problem**: The analyzer sometimes confuses escrow release timing with termination fee applicability
+### 3.4 Branded Output
+- `company_logo` URL/path
+- `color_scheme` (light/dark mode compatible)
+- `firm_name` displayed on reports
+- Store in user profile
 
-**Improvement**: 
-- Clarify that escrow (at closing) and termination fees (for non-closing scenarios) serve different purposes
-- Add logic to detect when both exist and are properly scoped
-- Ensure escrow survival mismatch detection doesn't flag cases where termination fee exists
+### 3.5 Custom PDF Templates
+- Base template with firm branding overlay
+- Generate PDF with: logo at top, firm name header, custom color scheme
+- Use report data as content source
 
-**Code location**: `packages/python-engine/merger_risk_analyzer.py` `_check_escrow_survival_mismatch()` method
+## Phase 4: Usability Improvements (All Tiers)
 
-### 5. Controlling Term Variant Detection (MEDIUM Impact)
-**Problem**: The analyzer doesn't handle term variants well (e.g., "Company Stockholders" for "Stockholders")
+### 4.1 Improved Suggestion Language
+- Update suggestion text in config and analyzer to be more precise and actionable
+- Reference the implemented taxonomy of defined terms, relationship types, etc.
 
-**Improvement**: 
-- Add logic to detect term variants from defined phrases
-- When "Company Stockholders" is referenced, check if "Stockholders" is defined
-- Support common patterns: "Acquiror Inc. ('Buyer')", "('Seller')" patterns
+### 4.2 Better Error Messages for Missing Sections
+- Enhance messages when required sections are absent from documents
+- Provide specific remediation guidance
 
-**Code location**: `packages/python-engine/merger_risk_analyzer.py` `_check_controlling_terms()` method
+### 4.3 Hover Tooltips on Knowledge Graph
+- Add tooltip text to entity types and relationship types when rendering KG in UI
+- Show definition and typical usage
 
-### 6. SEC Exhibit / Disclosure Schedule Exemption (MEDIUM Impact)
-**Problem**: The readiness gate sometimes blocks execution when SEC exhibits are referenced
+### 4.4 Keyboard Navigation Support
+- Add keyboard shortcuts for navigating report sections
+- Tab/Shift+Tab to move between sections
+- Arrow keys to expand/collapse sections
 
-**Improvement**: 
-- Enhance detection of SEC exhibit references (EX-2.1, Exhibit 2.1 format)
-- Exempt SEC exhibits from missing schedule execution gate
-- Only flag missing schedules as blockers for non-SEC documents
+### 4.5 Dark Mode Compatibility
+- Ensure all new UI elements support both light and dark themes
+- Use system prefers-color-scheme media queries
+- Test with existing partially-implemented dark mode
 
-**Code location**: `packages/python-engine/merger_risk_analyzer.py` `_check_readiness_gate()` method
+## Phase 5: Testing
 
-### 7. Skeleton Draft Detection Enhancement (LOW Impact)
-**Problem**: The current skeleton draft detection is basic (word count, schedule count)
+### 5.1 Test Against All 10 Contracts
+- Run analyzer on all 10 test contracts
+- Verify no regressions in existing detection
+- Validate what-if scenario overrides work correctly
 
-**Improvement**: 
-- Add detection for draft-specific language: "SAMPLE", "DRAFT", "INTENT"
-- Better detection of incomplete section numbering
-- Distinguish between Tier 1 skeleton and fully-developed drafts
+### 5.2 Regression Test Suite
+- Run existing pytest suite
+- Verify all 10 contracts process successfully with no errors
 
-**Code location**: `packages/python-engine/merger_risk_analyzer.py` `_detect_skeleton_draft()` method
+## Phase 6: Compatibility
 
-## Implementation Roadmap
+### 6.1 Existing Analyzer Compatibility
+- All changes maintain backward compatibility
+- Default behavior unchanged when no overrides specified
+- Existing imports continue to work
 
-### Phase 1: Critical Accuracy Improvements (1-2 weeks)
-1. Tax survival period classification
-2. Earnout metric definition parsing
-3. Fraud carve-out detection refinement
+### 6.2 Knowledge Graph Compatibility
+- KG entities and relationships unchanged
+- New parameters don't affect KG building
 
-### Phase 2: Enhanced Detection (2-3 weeks)
-4. Escrow vs termination fee distinction
-5. Controlling term variant detection
-6. SEC exhibit exemption enhancement
+### 6.3 Cross-Document Consistency Compatibility
+- Consistency engine unchanged
+- New features don't affect cross-doc analysis
 
-### Phase 3: Polish & Edge Cases (1 week)
-7. Skeleton draft detection enhancement
-8. Additional test cases and validation
-
-## Verification Plan
-
-After each improvement, verify with the existing contract sample set:
-
-- **All 4 contract types** should show improved detection accuracy
-- **No regressions** - existing findings should not be lost
-- **Adjusted scores** should more accurately reflect actual risk levels
-- **Must-fix items** should be more precisely prioritized
-
-## Success Metrics
-
-- Tax survival classification correct in ≥ 90% of cases
-- Earnout metric detection improved from 0% to ≥ 70% recognition rate
-- Fraud carve-out false positives reduced by ≥ 50%
-- Escrow/survival mismatch detection with ≥ 80% accuracy on real contracts
-- Controlling term variant detection for ≥ 80% of term references
+## Implementation Priority
+1. What-if scenario parameters (analyzer config + code)
+2. Output section toggles (format_output method)
+3. Enterprise branding (user profile settings)
+4. Usability improvements (suggestions, tooltips, dark mode)
+5. Test against all 10 contracts
+6. Final integration and polish

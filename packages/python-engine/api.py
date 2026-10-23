@@ -32,8 +32,115 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize analyzer
-analyzer = MergerRiskAnalyzer("merger_scoring_config.yaml")
+
+
+# Tier configuration and gating
+TIER_CONFIG = {
+    "free": {
+        "name": "Free",
+        "monthly_price": 1,
+        "max_analyses_per_month": 1,
+        "features": {
+            "basic_analysis": True,
+            "risk_scoring": True,
+            "pdf_export": False,
+            "knowledge_graph": False,
+            "cross_doc_consistency": False,
+            "clause_extraction": False,
+            "earnout_analysis": False,
+            "regulatory_analysis": False,
+            "document_inventory": False,
+            "ui_customization": False,
+            "team_seats": 1,
+            "analysis_history_days": 0,
+            "api_access": False,
+            "priority_support": False,
+        }
+    },
+    "professional": {
+        "name": "Professional",
+        "monthly_price": 1500,
+        "max_analyses_per_month": 10,
+        "features": {
+            "basic_analysis": True,
+            "risk_scoring": True,
+            "pdf_export": True,
+            "knowledge_graph": True,
+            "cross_doc_consistency": True,
+            "clause_extraction": True,
+            "earnout_analysis": True,
+            "regulatory_analysis": False,
+            "document_inventory": False,
+            "ui_customization": True,
+            "team_seats": 3,
+            "analysis_history_days": 0,
+            "api_access": True,
+            "priority_support": True,
+        }
+    },
+    "business": {
+        "name": "Business",
+        "monthly_price": 5000,
+        "max_analyses_per_month": 50,
+        "features": {
+            "basic_analysis": True,
+            "risk_scoring": True,
+            "pdf_export": True,
+            "knowledge_graph": True,
+            "cross_doc_consistency": True,
+            "clause_extraction": True,
+            "earnout_analysis": True,
+            "regulatory_analysis": True,
+            "document_inventory": True,
+            "ui_customization": True,
+            "team_seats": 10,
+            "analysis_history_days": 90,
+            "api_access": True,
+            "priority_support": True,
+            "regulatory_checklists": True,
+            "deal_type_checklists": True,
+        }
+    },
+    "enterprise": {
+        "name": "Enterprise",
+        "monthly_price": "custom",
+        "max_analyses_per_month": "unlimited",
+        "features": {
+            "basic_analysis": True,
+            "risk_scoring": True,
+            "pdf_export": True,
+            "knowledge_graph": True,
+            "cross_doc_consistency": True,
+            "clause_extraction": True,
+            "earnout_analysis": True,
+            "regulatory_analysis": True,
+            "document_inventory": True,
+            "ui_customization": True,
+            "team_seats": "unlimited",
+            "analysis_history_days": -1,
+            "api_access": True,
+            "priority_support": True,
+            "regulatory_checklists": True,
+            "deal_type_checklists": True,
+            "output_customization": True,
+            "what_if_scenarios": True,
+            "firm_precendent_training": True,
+            "sla_999": True,
+            "ssO_saml": True,
+            "white_label_reports": True,
+        }
+    }
+}
+
+def get_tier_config(tier: str) -> dict:
+    """Get configuration for a given tier."""
+    return TIER_CONFIG.get(tier, TIER_CONFIG["professional"])
+
+def has_feature(tier: str, feature: str) -> bool:
+    """Check if a tier has access to a feature."""
+    config = get_tier_config(tier)
+    return config["features"].get(feature, False)# Initialize analyzer
+analyzer = MergerRiskAnalyzer(str(Path(__file__).parent / "merger_scoring_config.yaml"))
 
 # Request/Response Models
 class AnalyzeOptions(BaseModel):
@@ -84,35 +191,43 @@ async def health_check():
 async def analyze_document(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = None,
-    options: AnalyzeOptions = None
+    options: AnalyzeOptions = None,
+    survival_period_override_months: Optional[int] = None,
+    indemnification_cap_pct_override: Optional[float] = None,
+    indemnification_basket_pct_override: Optional[float] = None,
+    earnout_metric_override: Optional[str] = None
 ):
     """
     Analyze a merger agreement document
-    
+
     - **file**: Merger agreement (PDF, DOCX, or TXT) up to 10MB
     - **options**: Analysis configuration
+    - **survival_period_override_months**: Override survival period in months (6-60) — Enterprise tier
+    - **indemnification_cap_pct_override**: Override cap percentage (5-50%) — Enterprise tier
+    - **indemnification_basket_pct_override**: Override basket percentage (0.5-5%) — Enterprise tier
+    - **earnout_metric_override**: Earnout metric selection (Revenue, EBITDA, Gross Profit, Net Income, Cash Flow) — Enterprise tier
     """
-    
+
     # Validate file size
     file.file.seek(0, 2)
     size = file.file.tell()
     file.file.seek(0)
-    
+
     if size > 10 * 1024 * 1024:  # 10MB
         raise HTTPException(status_code=413, detail="File too large (max 10MB)")
-    
+
     # Validate file type
     allowed_extensions = {'.txt', '.pdf', '.docx'}
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in allowed_extensions:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}"
         )
-    
+
     # Read file content
     content = await file.read()
-    
+
     # Extract text based on file type
     text = ""
     if file_ext == '.txt':
@@ -135,14 +250,39 @@ async def analyze_document(
             text = " ".join([para.text for para in doc.paragraphs])
         except ImportError:
             raise HTTPException(status_code=500, detail="DOCX parsing library not installed")
-    
+
     if not text.strip():
         raise HTTPException(status_code=400, detail="No text extracted from document")
-    
-    # Analyze
+
+    # Analyze with what-if overrides (Enterprise tier only)
+    # Apply overrides to analyzer instance
+    if survival_period_override_months is not None:
+        analyzer.survival_period_override_months = survival_period_override_months
+    if indemnification_cap_pct_override is not None:
+        analyzer.indemnification_cap_pct_override = indemnification_cap_pct_override
+    if indemnification_basket_pct_override is not None:
+        analyzer.indemnification_basket_pct_override = indemnification_basket_pct_override
+    if earnout_metric_override is not None:
+        analyzer.earnout_metric_override = earnout_metric_override
+
     options = options or AnalyzeOptions()
     result = analyzer.analyze(text, document_name=file.filename)
-    
+
+    # Convert findings to dicts for JSON serialization
+    findings_dicts = []
+    for f in result.findings:
+        fd = {
+            "rule": f.rule,
+            "deduction": f.deduction,
+            "description": f.description,
+            "severity": f.severity,
+        }
+        if f.location is not None:
+            fd["location"] = f.location
+        if f.suggestion is not None:
+            fd["suggestion"] = f.suggestion
+        findings_dicts.append(fd)
+
     # Build response
     response = AnalysisResponse(
         metadata={
@@ -156,7 +296,7 @@ async def analyze_document(
             "risk_level": result.risk_level,
             "recommendation": result.recommendation
         },
-        findings=result.findings if options.include_detailed_findings else [],
+        findings=findings_dicts if options.include_detailed_findings else [],
         interaction_stacks=result.interaction_stacks_triggered,
         must_fix=result.must_fix_items,
         arbitration_threshold=result.arbitration_threshold,

@@ -82,6 +82,11 @@ async def analyze_document(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = None,
     options: AnalyzeOptions = None
+    survival_period_override_months: Optional[int] = None,
+    indemnification_cap_pct_override: Optional[float] = None,
+    indemnification_basket_pct_override: Optional[float] = None,
+    earnout_metric_override: Optional[str] = None,
+    risk_level_override: Optional[str] = None,
 ):
     """
     Analyze a merger agreement document

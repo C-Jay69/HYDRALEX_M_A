@@ -79,9 +79,17 @@ class ConsistencyFinding:
 class DocumentMetadata:
     """Extracted metadata from a single document for comparison"""
 
-    def __init__(self, doc_name: str, text: str):
+    def __init__(self, doc_name: str, text: str, file_path: str = None):
         self.doc_name = doc_name
         self.text = text
+        self.file_path = file_path
+        self.document_hash: str = ""
+        self.file_size: int = 0
+        self.modification_time: str = ""
+        self.status: str = "draft"  # draft, final, executed
+        self.governing_law: str = ""
+        self.party_names: List[str] = []
+        self.related_agreements: List[str] = []
         self.defined_terms: Dict[str, str] = {}
         self.section_numbers: List[str] = []
         self.dates: List[str] = []
@@ -89,7 +97,6 @@ class DocumentMetadata:
         self.share_counts: List[str] = []
         self.signatories: List[str] = []
         self.schedule_refs: List[str] = []
-        self.party_names: List[str] = []
         self._extract_all()
 
     def _extract_all(self) -> None:
@@ -101,6 +108,11 @@ class DocumentMetadata:
         self._extract_signatories()
         self._extract_schedule_refs()
         self._extract_party_names()
+        self._extract_document_hash()
+        self._extract_file_metadata()
+        self._extract_status()
+        self._extract_governing_law()
+        self._extract_related_agreements()
 
     def _extract_defined_terms(self) -> None:
         """Extract defined terms with their definitions"""
@@ -165,6 +177,103 @@ class DocumentMetadata:
         """Extract party names"""
         pattern = r'(?:the\s+)?(?:Buyer|Seller|Target|Purchaser|Acquirer|Vendor|Grantor|Grantee|Lender|Borrower|Agent|Guarantor|Subsidiary|Affiliate)[\w\s]*'
         self.party_names = list(set(re.findall(pattern, self.text, re.IGNORECASE)))
+
+    def _extract_document_hash(self) -> None:
+        """Compute SHA-256 hash of the document content"""
+        import hashlib
+        self.document_hash = hashlib.sha256(self.text.encode('utf-8')).hexdigest()
+
+    def _extract_file_metadata(self) -> None:
+        """Extract file size and modification time if file_path is provided"""
+        if self.file_path:
+            import os
+            try:
+                stat = os.stat(self.file_path)
+                self.file_size = stat.st_size
+                self.modification_time = str(stat.st_mtime)
+            except OSError:
+                pass
+
+    def _extract_status(self) -> None:
+        """Detect document execution status: executed, effective, draft, negotiation, pending"""
+        text_lower = self.text.lower()
+
+        # Check for "executed" indicators
+        if re.search(r'\b(date\s+of\s+execution|execution\s+date|parties\s+agree|subject\s+to\s+contract)\b', text_lower):
+            self.status = "executed"
+        # Check for "effective date"
+        elif re.search(r'\beffective\s+date\b', text_lower):
+            self.status = "effective"
+        # Check for "counterparts" or "execution copy"
+        elif re.search(r'\bcounterparts\b', text_lower) or re.search(r'\bexecution\s+copy\b', text_lower):
+            self.status = "executed"
+        # Check for "negotiation" indicators
+        elif re.search(r'\bnegotiat\w*\b', text_lower) or re.search(r'\bsubject\s+to\s+contract\b', text_lower):
+            self.status = "negotiation"
+        # Check for "pending" indicators
+        elif re.search(r'\bpending\b', text_lower):
+            self.status = "pending"
+        else:
+            # Default to draft if no execution markers found
+            self.status = "draft"
+
+    def _extract_governing_law(self) -> None:
+        """Extract governing law clause and identify specific state/country"""
+        import re
+        text_lower = self.text.lower()
+
+        governing_law_patterns = [
+            r'governing\s+by\s+the\s+laws\s+of\s+([^\.]{0,100})',
+            r'this\s+agreement\s+shall\s+be\s+governed\s+by\s+the?\s+laws\s+of\s+([^\.]{0,100})',
+            r'governed\s+by\s+the?\s+laws\s+of\s+([^\.]{0,100})',
+            r'governed\s+by\s+and\s+construed\s+in\s+accordance\s+with\s+the\s+laws\s+of\s+([^\.]{0,100})',
+            r'jurisdiction\s+([^\.]{0,100})',
+        ]
+
+        for pattern in governing_law_patterns:
+            match = re.search(pattern, self.text, re.IGNORECASE)
+            if match:
+                law = match.group(1).strip().rstrip(';,.')
+                # Filter for specific states/countries
+                specific_laws = ['delaware', 'new york', 'california', 'texas', 'london', 'england', 'uk']
+                law_lower = law.lower()
+                for specific in specific_laws:
+                    if law_lower.startswith(specific) or law_lower == specific:
+                        self.governing_law = law
+                        return
+                # If no specific law matched but we have something, store it
+                if law:
+                    self.governing_law = law
+                return
+
+        # If no governing law specified
+        if not self.governing_law:
+            self.governing_law = "not specified"
+
+    def _extract_related_agreements(self) -> None:
+        """Detect related agreements: ancillary agreements, side letters, deed of adherence, etc."""
+        import re
+        text_lower = self.text.lower()
+
+        related_agreement_patterns = [
+            r'ancillary\s+agreement',
+            r'side\s+letter',
+            r'deed\s+of\s+adherence',
+            r'transition\s+agreement',
+            r'deed\s+of\s+transfer',
+            r'bill\s+of\s+sale',
+            r'assignment\s+and\s+assumption',
+        ]
+
+        found_agreements: set = set()
+        for pattern in related_agreement_patterns:
+            for match in re.finditer(pattern, text_lower):
+                found_agreements.add(match.group(0))
+
+        if found_agreements:
+            self.related_agreements = list(found_agreements)
+        else:
+            self.related_agreements = []
 
 
 class CrossDocumentConsistencyEngine:

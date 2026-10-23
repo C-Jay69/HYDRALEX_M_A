@@ -34,6 +34,29 @@ risk_levels:
     recommendation: "Do Not Proceed — fundamental structural defects present"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# WHAT-IF SCENARIO OVERRIDES  (Professional Tier)
+# User-adjustable parameters that modify risk scoring behavior.
+# When set, these override detected values from the document.
+# When None (default), document-detected values are used.
+# ─────────────────────────────────────────────────────────────────────────────
+what_if_overrides:
+  # Survival period override in months (6-60 range)
+  # Default: None → use period detected in document
+  survival_period_override_months: None
+
+  # Indemnification cap percentage override (5-50%)
+  # Default: None → use cap detected in document
+  indemnification_cap_pct_override: None
+
+  # Indemnification basket percentage override (0.5-5%)
+  # Default: None → use basket detected in document
+  indemnification_basket_pct_override: None
+
+  # Earnout metric selection: Revenue, EBITDA, Gross Profit, Net Income, Cash Flow
+  # Default: None → use metric detected in document
+  earnout_metric_override: None
+
+# ─────────────────────────────────────────────────────────────────────────────
 # DEDUCTIONS  (each key maps to rule names used in merger_risk_analyzer.py)
 # ─────────────────────────────────────────────────────────────────────────────
 deductions:
@@ -77,6 +100,7 @@ deductions:
       deduction: 18
       description: "Earnout formula has no defined metrics — litigation-certain"
       severity: "critical"
+      suggestion: "Consider: Revenue, EBITDA, Gross Profit, or Net Income targets with objective measurement criteria; avoid sole discretion language over metric calculation"
     missing_dispute_resolution:
       deduction: 8
       description: "No earnout dispute resolution mechanism"

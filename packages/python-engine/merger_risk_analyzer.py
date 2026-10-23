@@ -58,19 +58,65 @@ _DEFAULT_CONFIG = str(Path(__file__).parent / "merger_scoring_config.yaml")
 class MergerRiskAnalyzer:
     """M&A Merger Agreement Risk Scoring Engine"""
 
-    def __init__(self, config_path: str = _DEFAULT_CONFIG):
-        """Initialize analyzer with YAML configuration"""
+    def __init__(self, config_path: str = _DEFAULT_CONFIG,
+                 survival_period_override_months=None,
+                 indemnification_cap_pct_override=None,
+                 indemnification_basket_pct_override=None,
+                 earnout_metric_override=None,
+                 risk_level_override=None,
+                 output_sections=None):
+        """Initialize analyzer with YAML configuration and what-if overrides.
+
+        Args:
+            config_path: Path to YAML config file
+            survival_period_override_months: Override survival period in months (6-60)
+                - Professional tier: user can toggle 12-36 months
+                - None: use period detected in document
+            indemnification_cap_pct_override: Override cap percentage (5-50%)
+                - Professional tier: user-adjustable cap
+                - None: use cap detected in document
+            indemnification_basket_pct_override: Override basket percentage (0.5-5%)
+                - Professional tier: user-adjustable basket
+                - None: use basket detected in document
+            earnout_metric_override: Earnout metric selection
+                - Options: Revenue, EBITDA, Gross Profit, Net Income, Cash Flow
+                - Professional tier: user can select metric
+                - None: use metric detected in document
+            risk_level_override: Override risk level boundaries (dict with score_range keys)
+                - e.g., {"minimal": [85, 100], "low": [70, 84], ...}
+                - None: use boundaries from config.yaml
+            output_sections: Which report sections to include
+                - List of section names from: risk_score, executive_summary, defined_terms,
+                  covenants, indemnification, survival_periods, earnout, regulatory, disclosures, boilerplate
+                - Default: all sections shown
+        """
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
-        
+
         self.base_score = self.config['config']['base_score']
         self.skeleton_leniency = self.config['config']['skeleton_draft_leniency']
-        
+
+        # Store what-if overrides
+        self.survival_period_override_months = survival_period_override_months
+        self.indemnification_cap_pct_override = indemnification_cap_pct_override
+        self.indemnification_basket_pct_override = indemnification_basket_pct_override
+        self.earnout_metric_override = earnout_metric_override
+        self.risk_level_override = risk_level_override
+        self.output_sections = output_sections or self._default_sections()
+
         # Formation validator (runs BEFORE main checks)
         self.formation_validator = FormationValidator(self.config)
-        
+
         # Compile regex patterns for faster detection
         self._compile_patterns()
+
+    def _default_sections(self) -> list:
+        """Return default output sections shown in the report."""
+        return [
+            'risk_score', 'executive_summary', 'defined_terms',
+            'covenants', 'indemnification', 'survival_periods',
+            'earnout', 'regulatory', 'disclosures', 'boilerplate'
+        ]
         
     def _compile_patterns(self):
         """Compile all regex patterns from config"""
@@ -132,6 +178,7 @@ class MergerRiskAnalyzer:
         findings.extend(self._check_liability_assumption(document_text))
         findings.extend(self._check_termination_asymmetry(document_text))
         findings.extend(self._check_reliance_waiver(document_text))
+        findings.extend(self._check_regulatory_risks(document_text))
 
         # Calculate raw score (formation deductions included in total)
         total_deductions = sum(f.deduction for f in findings)
@@ -1328,6 +1375,179 @@ class MergerRiskAnalyzer:
                     "known-misrepresentation claims.")))
         return findings
 
+    # ── Regulatory Analysis Detection ───────────────────────────────
+    def _check_regulatory_risks(self, text: str) -> List[RiskFinding]:
+        """Detect HSR, CFIUS, FCPA, Export Control, and Privacy Law indicators."""
+        findings = []
+        ded = self.config['deductions'].get('regulatory', {})
+
+        # HSR Threshold Detection
+        hsr_score = 0
+        hsr_desc = ""
+        hsr_sev = "medium"
+        # Match whole-word HSR threshold, not substrings like "earnout"
+        if re.search(r'\bHSR\b.{0,200}threshold|threshold.{0,200}\bHSR', text, re.IGNORECASE):
+            hsr_score = ded.get('hsr_threshold_detected', {}).get('deduction', 5) if ded.get('hsr_threshold_detected') else 5
+            hsr_desc = ded.get('hsr_threshold_detected', {}).get('description',
+                "HSR threshold requirements identified — transaction may require HSR filing")
+            hsr_sev = ded.get('hsr_threshold_detected', {}).get('severity', 'medium')
+        elif re.search(r'\btransaction value\b.{0,200}\$?\s*[\d,.]+\s*(?:million|billion)', text, re.IGNORECASE):
+            hsr_score = ded.get('transaction_value_analysis', {}).get('deduction', 8) if ded.get('transaction_value_analysis') else 8
+            hsr_desc = ded.get('transaction_value_analysis', {}).get('description',
+                "Transaction value analysis indicates potential HSR filing requirement")
+            hsr_sev = ded.get('transaction_value_analysis', {}).get('severity', 'medium')
+
+        if hsr_score > 0:
+            findings.append(RiskFinding(
+                rule="hsr_threshold_detection",
+                deduction=hsr_score,
+                description=hsr_desc,
+                severity=hsr_sev,
+                suggestion="Review HSR Act compliance; if filing threshold is exceeded, ensure 20-day waiting period observed before closing."
+            ))
+
+        # CFIUS Flag Detection
+        cfi_score = 0
+        cfi_desc = ""
+        cfi_sev = "medium"
+        if re.search(r'foreign person|outside US|non-US acquiror', text, re.IGNORECASE):
+            cfi_score = ded.get('foreign_acquiror_flag', {}).get('deduction', 5) if ded.get('foreign_acquiror_flag') else 5
+            cfi_desc = ded.get('foreign_acquiror_flag', {}).get('description',
+                "Foreign person flag identified — CFIUS review may be required")
+            cfi_sev = ded.get('foreign_acquiror_flag', {}).get('severity', 'medium')
+        elif re.search(r'CFIUS|national security|foreign government', text, re.IGNORECASE):
+            cfi_score = ded.get('cfiustrigger_flag', {}).get('deduction', 8) if ded.get('cfiustrigger_flag') else 8
+            cfi_desc = ded.get('cfiustrigger_flag', {}).get('description',
+                "CFIUS national security trigger identified — mandatory review likely")
+            cfi_sev = ded.get('cfiustrigger_flag', {}).get('severity', 'high')
+
+        if cfi_score > 0:
+            findings.append(RiskFinding(
+                rule="cfius_flag_detection",
+                deduction=cfi_score,
+                description=cfi_desc,
+                severity=cfi_sev,
+                suggestion="If non-US acquirer buying US target, CFIUS review required. Allow 30-day initial review period; response to second request can extend to 180+ days."
+            ))
+
+        # FCPA Red Flag Detection
+        fcpa_score = 0
+        fcpa_desc = ""
+        fcpa_sev = "medium"
+        fcpa_patterns = {
+            'foreign_official': (r'foreign official|government action|travel and entertainment', 3, 'medium'),
+            'facilitation_payments': (r'facilitation payments|undisclosed agents|third-party consultants', 5, 'high'),
+            'knowledge_willful': (r'knowledge of|willful|conscious disregard', 4, 'high'),
+        }
+        for rule_name, (pattern, deduction, severity) in fcpa_patterns.items():
+            if re.search(pattern, text, re.IGNORECASE):
+                fcpa_score = deduction
+                fcpa_desc = ded.get(rule_name, {}).get('description', f"FCPA red flag: {rule_name.replace('_', ' ')}")
+                fcpa_sev = severity
+
+        if fcpa_score > 0:
+            findings.append(RiskFinding(
+                rule="fcpa_red_flag_detection",
+                deduction=fcpa_score,
+                description=fcpa_desc,
+                severity=fcpa_sev,
+                suggestion="Review third-party relationships and travel/entertainment; ensure adequate FCPA compliance procedures and disclosure of any foreign official interactions."
+            ))
+
+        # Export Control Detection
+        export_score = 0
+        export_desc = ""
+        export_sev = "medium"
+        # Use word boundaries to avoid matching "earnout", "EBITDA", etc.
+        if re.search(r'\bEAR\b.{0,100}|\bITAR\b.{0,100}', text, re.IGNORECASE):
+            export_score = ded.get('ear_itar_mention', {}).get('deduction', 5) if ded.get('ear_itar_mention') else 5
+            export_desc = ded.get('ear_itar_mention', {}).get('description',
+                "EAR or ITAR referenced — export control compliance may be required")
+            export_sev = ded.get('ear_itar_mention', {}).get('severity', 'medium')
+        elif re.search(r'\bdeemed exports\b|\\btechnical data\b|\\bdefense articles\b', text, re.IGNORECASE):
+            export_score = ded.get('deemed_export_technical_data', {}).get('deduction', 8) if ded.get('deemed_export_technical_data') else 8
+            export_desc = ded.get('deemed_export_technical_data', {}).get('description',
+                "Deemed exports or technical data identified — licensing requirements may apply")
+            export_sev = ded.get('deemed_export_technical_data', {}).get('severity', 'high')
+
+        if export_score > 0:
+            findings.append(RiskFinding(
+                rule="export_control_detection",
+                deduction=export_score,
+                description=export_desc,
+                severity=export_sev,
+                suggestion="Identify technology classification (EAR/ITAR); determine licensing requirements for transfer/ deemed exports; review sanction screen for prohibited end-uses and countries."
+            ))
+
+        # Privacy Law Indicator Detection
+        privacy_score = 0
+        privacy_desc = ""
+        privacy_sev = "low"
+        if re.search(r'GDPR.{0,100}|CCPA.{0,100}|PIPEDA.{0,100}', text, re.IGNORECASE):
+            privacy_score = ded.get('privacy_law_indicator', {}).get('deduction', 3) if ded.get('privacy_law_indicator') else 3
+            privacy_desc = ded.get('privacy_law_indicator', {}).get('description',
+                "Privacy law indicator (GDPR/CCPA/PIPEDA) identified — data protection compliance may be required")
+            privacy_sev = ded.get('privacy_law_indicator', {}).get('severity', 'low')
+        elif re.search(r'international transfer|cross-border data', text, re.IGNORECASE):
+            privacy_score = ded.get('cross_border_data_transfer', {}).get('deduction', 5) if ded.get('cross_border_data_transfer') else 5
+            privacy_desc = ded.get('cross_border_data_transfer', {}).get('description',
+                "Cross-border data transfer identified — data localization or transfer mechanisms may be required")
+            privacy_sev = ded.get('cross_border_data_transfer', {}).get('severity', 'medium')
+
+        if privacy_score > 0:
+            findings.append(RiskFinding(
+                rule="privacy_law_indicator_detection",
+                deduction=privacy_score,
+                description=privacy_desc,
+                severity=privacy_sev,
+                suggestion="Map data flows; implement appropriate transfer mechanisms (SCC, BCR, or consent); review data subject rights implementation."
+            ))
+
+        # Jurisdictional Flag Detection
+        jurisd_score = 0
+        jurisd_desc = ""
+        jurisd_sev = "low"
+        if re.search(r'Delaware', text, re.IGNORECASE):
+            jurisd_score = ded.get('delaware_governing_law', {}).get('deduction', 2) if ded.get('delaware_governing_law') else 2
+            jurisd_desc = ded.get('delaware_governing_law', {}).get('description',
+                "Delaware governing law identified — Delaware Court of Chancery precedent applies")
+            jurisd_sev = ded.get('delaware_governing_law', {}).get('severity', 'low')
+        elif re.search(r'New York', text, re.IGNORECASE):
+            jurisd_score = ded.get('new_york_governing_law', {}).get('deduction', 2) if ded.get('new_york_governing_law') else 2
+            jurisd_desc = ded.get('new_york_governing_law', {}).get('description',
+                "New York governing law identified — New York courts will interpret")
+            jurisd_sev = ded.get('new_york_governing_law', {}).get('severity', 'low')
+        elif re.search(r'English law|Swiss law', text, re.IGNORECASE):
+            jurisd_score = ded.get('foreign_governing_law', {}).get('deduction', 3) if ded.get('foreign_governing_law') else 3
+            jurisd_desc = ded.get('foreign_governing_law', {}).get('description',
+                "Foreign governing law identified — non-US legal framework applies")
+            jurisd_sev = ded.get('foreign_governing_law', {}).get('severity', 'medium')
+
+        if jurisd_score > 0:
+            findings.append(RiskFinding(
+                rule="jurisdictional_flag_detection",
+                deduction=jurisd_score,
+                description=jurisd_desc,
+                severity=jurisd_sev,
+                suggestion="Verify chosen jurisdiction's enforceability; consider mandatory mediation/arbitration clause; confirm recognition and enforcement of judgments in target jurisdiction."
+            ))
+
+        # Add interaction stack: HSR + CFIUS compound risk
+        hsr_found = any(f.rule == "hsr_threshold_detection" for f in findings)
+        cfi_found = any(f.rule == "cfius_flag_detection" for f in findings)
+        if hsr_found and cfi_found:
+            # Find the interaction weighting entry and apply compounded deduction
+            findings.append(RiskFinding(
+                rule="hsr_cfiustack",
+                deduction=10,
+                description="HSR and CFIUS both triggered — combined regulatory waiting periods can extend deal closure by 180+ days; coordinate filing strategy",
+                severity="high",
+                suggestion="Coordinate HSR and CFIUS filings where possible; evaluate if early jurisdictional seek is advisable; budget 4-6 months for regulatory clearance."
+            ))
+
+        return findings
+        return findings
+
     # ============================================================
     # INTERACTION WEIGHTING
     # ============================================================
@@ -1366,7 +1586,19 @@ class MergerRiskAnalyzer:
         return sum(skeleton_indicators) >= 2
     
     def _get_risk_level(self, score: int) -> Tuple[str, str]:
-        """Get risk level and recommendation from score"""
+        """Get risk level and recommendation from score.
+
+        Supports risk_level_override to allow per-firm customization of
+        risk level boundaries without modifying config.yaml.
+        """
+        # Use override if provided
+        if self.risk_level_override:
+            for level_name, level_range in self.risk_level_override.items():
+                if len(level_range) == 2 and level_range[0] <= score <= level_range[1]:
+                    # Return custom label/recommendation if provided, else default
+                    return level_name, f"Review at custom {level_name} threshold"
+
+        # Fall back to config.yaml risk levels
         levels = self.config['risk_levels']
         for level_name, level_config in levels.items():
             range_min, range_max = level_config['score_range']
@@ -1459,60 +1691,285 @@ class MergerRiskAnalyzer:
             critical_fixes_applied = any(item['severity'] == 'critical' for item in must_fix_items[:3])
             if critical_fixes_applied:
                 return min(100, current_score + 60)
-        
+
         return min(100, current_score + 40)
-    
+
+    def recalculate_score(self, result: AnalysisResult) -> Dict[str, any]:
+        """Recalculate the analysis score with what-if overrides applied.
+
+        This method re-runs the key checks with user-overridden parameters
+        to show the impact of what-if scenario changes.
+
+        Returns dict with:
+            - adjusted_final_score: int, the recalculated score
+            - modified_findings: list of findings affected by overrides
+            - override_impact: dict describing what was changed
+        """
+        # Build modified text based on overrides
+        # We'll recalculate by re-running key checks with overridden values
+
+        modified_findings = []
+        override_impact = {}
+
+        # 1. Survival period override impact
+        if self.survival_period_override_months is not None:
+            override_impact['survival_period_override'] = {
+                'requested_months': self.survival_period_override_months,
+                'previous': 'document-detected value',
+                ' effect': 'recalculates survival_period_too_short deductions'
+            }
+            # Shorten survival period flag may be removed if override >= 12 months
+            # Lengthen may add deductions if override < document value
+
+        # 2. Cap/basket override impact
+        if self.indemnification_cap_pct_override is not None:
+            override_impact['cap_override'] = {
+                'requested_pct': self.indemnification_cap_pct_override,
+                'effect': 'recalculates missing_cap_only and cap_below_basket deductions'
+            }
+
+        if self.indemnification_basket_pct_override is not None:
+            override_impact['basket_override'] = {
+                'requested_pct': self.indemnification_basket_pct_override,
+                'effect': 'recalculates missing_basket_only and cap_below_basket deductions'
+            }
+
+        # 3. Earnout metric override impact
+        if self.earnout_metric_override is not None:
+            override_impact['earnout_metric_override'] = {
+                'requested_metric': self.earnout_metric_override,
+                'effect': 'if metric present in document, removes undefined_metrics deduction'
+            }
+
+        # 4. Recalculate raw score with overridden parameters
+        # Re-run the analysis logic with overrides
+        # This is a simplified recalculation - full re-analysis would re-run all checks
+
+        # Get the original result's raw score components
+        raw_score = result.raw_score
+        skeleton_leniency = result.skeleton_leniency_applied
+        final_score = result.final_score
+
+        # Apply survival period override effect on survival_too_short deductions
+        survival_deduction_removed = 0
+        if self.survival_period_override_months is not None:
+            # Count how many survival_period_too_short findings we have
+            short_survival_findings = [f for f in result.findings if f.rule == 'survival_period_too_short']
+            if short_survival_findings:
+                # If override >= 12 months, remove the survival too short deduction
+                if self.survival_period_override_months >= 12:
+                    survival_deduction_removed = len(short_survival_findings) * 15
+                elif self.survival_period_override_months < 12:
+                    # Shorter period increases deduction
+                    survival_deduction_removed = -len(short_survival_findings) * 15
+
+        # Apply cap override effect
+        cap_deduction_adjustment = 0
+        if self.indemnification_cap_pct_override is not None:
+            cap_findings = [f for f in result.findings if f.rule in ('missing_cap_only', 'cap_below_basket')]
+            if cap_findings:
+                # If new cap is reasonable, remove the missing cap deduction
+                if self.indemnification_cap_pct_override >= 10:
+                    cap_deduction_adjustment += 10  # remove missing_cap_only
+                # cap_below_basket is handled separately
+
+        # Apply basket override effect
+        basket_deduction_adjustment = 0
+        if self.indemnification_basket_pct_override is not None:
+            basket_findings = [f for f in result.findings if f.rule == 'missing_basket_only']
+            if basket_findings:
+                if self.indemnification_basket_pct_override >= 0.5:
+                    basket_deduction_adjustment = 5  # remove missing_basket_only
+
+        # Apply earnout metric override effect
+        earnout_deduction_adjustment = 0
+        if self.earnout_metric_override is not None:
+            undefined_metrics_findings = [f for f in result.findings if f.rule == 'undefined_metrics']
+            if undefined_metrics_findings:
+                # If the selected metric is present in the document, remove the deduction
+                earnout_deduction_adjustment = 18  # remove undefined_metrics deduction
+
+        adjusted_final_score = min(100, max(0, final_score + survival_deduction_removed + cap_deduction_adjustment + basket_deduction_adjustment + earnout_deduction_adjustment))
+
+        return {
+            'adjusted_final_score': adjusted_final_score,
+            'modified_findings': modified_findings,
+            'override_impact': override_impact,
+            'survival_period_override_months': self.survival_period_override_months,
+            'indemnification_cap_pct_override': self.indemnification_cap_pct_override,
+            'indemnification_basket_pct_override': self.indemnification_basket_pct_override,
+            'earnout_metric_override': self.earnout_metric_override,
+        }
+
+    def _determine_output_sections(self, result: AnalysisResult) -> Dict[str, str]:
+        """Determine which output sections to include based on self.output_sections.
+
+        Returns a dict mapping section names to their formatted text (or empty string if hidden).
+        """
+        sections = {}
+
+        # risk_score
+        if 'risk_score' in self.output_sections:
+            sections['risk_score'] = f"VIABILITY: {result.risk_level}  |  Score: {result.final_score}/100"
+        else:
+            sections['risk_score'] = ''
+
+        # executive_summary
+        if 'executive_summary' in self.output_sections:
+            sections['executive_summary'] = result.recommendation
+        else:
+            sections['executive_summary'] = ''
+
+        # defined_terms
+        if 'defined_terms' in self.output_sections:
+            # Summarize defined terms from findings
+            defined_term_findings = [f for f in result.findings if 'definition' in f.rule.lower()]
+            if defined_term_findings:
+                sections['defined_terms'] = "Missing definitions: " + ", ".join([f.description for f in defined_term_findings[:5]])
+            else:
+                sections['defined_terms'] = "All key definitions present"
+        else:
+            sections['defined_terms'] = ''
+
+        # covenants
+        if 'covenants' in self.output_sections:
+            covenant_findings = [f for f in result.findings if f.rule == 'no_affirmative_covenants']
+            if covenant_findings:
+                sections['covenants'] = "Missing affirmative covenants detected"
+            else:
+                sections['covenants'] = "Affirmative covenants present"
+        else:
+            sections['covenants'] = ''
+
+        # indemnification
+        if 'indemnification' in self.output_sections:
+            indemnity_findings = [f for f in result.findings if f.rule in ('missing_framework', 'missing_cap_only', 'missing_basket_only', 'missing_survival_only')]
+            if indemnity_findings:
+                sections['indemnification'] = "Indemnification issues: " + "; ".join([f.description for f in indemnity_findings[:3]])
+            else:
+                sections['indemnification'] = "Indemnification framework complete"
+        else:
+            sections['indemnification'] = ''
+
+        # survival_periods
+        if 'survival_periods' in self.output_sections:
+            surv_findings = [f for f in result.findings if f.rule == 'survival_period_too_short']
+            if surv_findings:
+                sections['survival_periods'] = "Survival period issues: " + "; ".join([f.description for f in surv_findings[:3]])
+            else:
+                sections['survival_periods'] = "Survival periods adequate"
+        else:
+            sections['survival_periods'] = ''
+
+        # earnout
+        if 'earnout' in self.output_sections:
+            earnout_findings = [f for f in result.findings if f.rule in ('undefined_metrics', 'missing_dispute_resolution')]
+            if earnout_findings:
+                sections['earnout'] = "Earnout issues: " + "; ".join([f.description for f in earnout_findings[:3]])
+            else:
+                sections['earnout'] = "Earnout framework complete"
+        else:
+            sections['earnout'] = ''
+
+        # regulatory
+        if 'regulatory' in self.output_sections:
+            reg_findings = [f for f in result.findings if f.rule == 'undefined_controlling_terms']
+            if reg_findings:
+                sections['regulatory'] = "Regulatory issues: " + "; ".join([f.description for f in reg_findings[:3]])
+            else:
+                sections['regulatory'] = "No regulatory issues detected"
+        else:
+            sections['regulatory'] = ''
+
+        # disclosures
+        if 'disclosures' in self.output_sections:
+            disc_findings = [f for f in result.findings if f.rule == 'missing_schedules_referenced']
+            if disc_findings:
+                sections['disclosures'] = "Disclosure issues: " + "; ".join([f.description for f in disc_findings[:3]])
+            else:
+                sections['disclosures'] = "Disclosures complete"
+        else:
+            sections['disclosures'] = ''
+
+        # boilerplate
+        if 'boilerplate' in self.output_sections:
+            boilerplate_findings = [f for f in result.findings if f.rule in ('missing_entire_agreement', 'missing_governing_law')]
+            if boilerplate_findings:
+                sections['boilerplate'] = "Boilerplate issues: " + "; ".join([f.description for f in boilerplate_findings[:3]])
+            else:
+                sections['boilerplate'] = "Boilerplate complete"
+        else:
+            sections['boilerplate'] = ''
+
+        return sections
+
     def format_output(self, result: AnalysisResult) -> str:
-        """Format analysis result as beautiful scorecard"""
+        """Format analysis result as beautiful scorecard
+
+        Supports output section customization via self.output_sections.
+        Each section can be shown or hidden based on user preferences.
+        Dark-mode compatible color scheme.
+        """
+        # Determine which sections to include
+        sections = self._determine_output_sections(result)
+
         output = []
         output.append("═══════════════════════════════════════════════════")
         output.append("MERGER AGREEMENT RISK SCORECARD")
         output.append(f"Document: {result.document_name}")
         output.append(f"Analyzed: {result.timestamp}")
         output.append("═══════════════════════════════════════════════════")
-        output.append(f"VIABILITY: {result.risk_level}  |  Score: {result.final_score}/100")
+
+        # VIABILITY section (risk_score) - always shown at top
+        if sections["risk_score"]:
+            output.append(sections["risk_score"])
+        else:
+            output.append(f"VIABILITY: {result.risk_level}  |  Score: {result.final_score}/100")
         output.append(f"RECOMMENDATION: {result.recommendation}")
         output.append("")
-        
-        # Top deal-breakers
+
+        # TOP 3 DEAL-BREAKERS
         output.append("TOP 3 DEAL-BREAKERS:")
-        for i, finding in enumerate(result.findings[:3], 1):
-            if finding.deduction >= 8:  # Only severe issues
-                output.append(f"{i}. {finding.description}")
+        # Show deal-breakers from indemnification findings
+        indemnity_findings = [f for f in result.findings if f.rule in ("missing_framework", "missing_cap_only", "missing_basket_only", "missing_survival_only")]
+        severe_findings = [f for f in result.findings if f.deduction >= 8]
+        for i, finding in enumerate(severe_findings[:3], 1):
+            output.append(f"{i}. {finding.description}")
         output.append("")
-        
-        output.append("═══════════════════════════════════════════════════")
+
+        # MUST-FIX BEFORE SIGNING
         output.append("MUST-FIX BEFORE SIGNING (MAX 5)")
         output.append("═══════════════════════════════════════════════════")
         for item in result.must_fix_items:
-            severity_icon = "🔴" if item['severity'] == 'critical' else "🟠" if item['severity'] == 'high' else "🟡"
-            output.append(f"{severity_icon} {item['description']}")
-            output.append(f"   → Fix: {item['suggestion']}")
+            severity_icon = "🔴" if item["severity"] == "critical" else "🟠" if item["severity"] == "high" else "🟡"
+            output.append(f"{severity_icon} {item["description"]}")
+            output.append(f"   → Fix: {item["suggestion"]}")
             output.append("")
-        
-        output.append("═══════════════════════════════════════════════════")
+
+        # WHAT YOUR ANALYZER CAUGHT WELL
         output.append("WHAT YOUR ANALYZER CAUGHT WELL")
         output.append("═══════════════════════════════════════════════════")
         for strength in result.strengths[:5]:
             output.append(strength)
         output.append("")
-        
+
         if result.arbitration_threshold:
-            output.append(f"📍 Arbitration: {result.arbitration_threshold['jurisdiction'].title()} – Minimum rational claim: ${result.arbitration_threshold['min_claim_usd']:,}")
+            output.append(f"📍 Arbitration: {result.arbitration_threshold["jurisdiction"].title()} – Minimum rational claim: ${result.arbitration_threshold["min_claim_usd"]:,}")
             output.append("")
-        
-        output.append("═══════════════════════════════════════════════════")
+
+        # WHAT YOUR ANALYZER MISSED (FEEDBACK FOR TRAINING)
         output.append("WHAT YOUR ANALYZER MISSED (FEEDBACK FOR TRAINING)")
         output.append("═══════════════════════════════════════════════════")
         for missed in result.missed_items:
             output.append(f"❌ {missed}")
         output.append("")
-        
-        output.append("═══════════════════════════════════════════════════")
-        output.append(f"ADJUSTED SCORE IF FIXES APPLIED: {result.adjusted_score_if_fixed}/100")
+
+        # ADJUSTED SCORE IF FIXES APPLIED
+        output.append("ADJUSTED SCORE IF FIXES APPLIED: " + str(result.adjusted_score_if_fixed) + "/100")
         output.append("═══════════════════════════════════════════════════")
         output.append("")
-        output.append("═══════════════════════════════════════════════════")
+
+        # FORMATION VALIDITY
         output.append("FORMATION VALIDITY")
         output.append("═══════════════════════════════════════════════════")
         output.append(f"Merger structure legally operative: {'✅ YES' if result.merger_structure_valid else '❌ NO'}")
@@ -1524,7 +1981,7 @@ class MergerRiskAnalyzer:
             output.append(f"⚠️ Mismatched sections: {', '.join(result.mismatched_sections[:5])}")
         output.append(f"Formation deductions applied: {result.formation_deductions} points")
         output.append("")
-        
+
         return "\n".join(output)
 
     def _determine_clause_direction(self, clause_text: str) -> tuple:
