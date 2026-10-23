@@ -1,0 +1,38 @@
+TEST CONTRACT 7: Governing Law with Severability Loophole
+=======================================================
+
+BETWEEN: Buyer Corp ("Buyer")
+AND: Seller LLC ("Seller")
+
+**1. PURCHASE PRICE AND CLOSING**
+
+1.1 Purchase Price: $35,000,000 payable in cash at closing.
+
+**2. GOVERNING LAW**
+
+2.1 This Agreement shall be governed by and construed in accordance with the laws of the State of Delaware, without regard to conflicts of law principles.
+
+2.2 Severability: If any provision of this Agreement is held to be invalid, illegal, or unenforceable in any respect by a court of competent jurisdiction, the remaining provisions of this Agreement shall continue in full force and effect. Notwithstanding the foregoing, if the applicable law repeals or modifies any provision making it invalid, illegal, or unenforceable, then such provision shall be replaced with a provision that most closely approximates the original intent of the parties, as determined by the applicable law.
+
+**2. REPRESENTATIONS**
+
+3.1 Standing: Each party has full power and authority to enter into this Agreement and to consummate the transactions contemplated herein.
+
+**3. INDEMNIFICATION**
+
+3.1 Indemnity: Seller shall indemnify Buyer against any losses arising from breach of representations.
+
+3.2 Cap: Seller's total indemnification obligation shall not exceed $3,000,000.
+
+**4. TERMINATION**
+
+4.1 Either party may terminate this Agreement upon 30 days' written notice if the other party materially breaches any term and fails to cure within such period.
+
+**5. MISCELLANEOUS**
+
+5.1 Integration: This Agreement, together with the schedules and exhibits attached hereto, constitutes the entire agreement between the parties.
+
+FOR BUYER: ________________________  FOR SELLER: ________________________
+Name: ________________________  Name: ________________________
+Title: ________________________  Title: ________________________
+Date: ________________________  Date: ________________________

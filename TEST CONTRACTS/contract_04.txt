@@ -1,0 +1,40 @@
+TEST CONTRACT 4: Tax Survival with Undefined "Final Tax Return"
+=========================================================
+
+BETWEEN: Buyer Corp ("Buyer")
+AND: Seller LLC ("Seller")
+
+**1. PURCHASE PRICE AND CLOSING**
+
+1.1 Purchase Price: $30,000,000 payable in cash at closing.
+
+**2. INDEMNIFICATION**
+
+2.1 Survival of Representations: Representations and warranties shall survive closing for a period ending on the earlier of (a) 24 months following closing, or (b) the date on which Seller files its final federal income tax return for the tax year ending closest to the one-year anniversary of closing (the "Tax Return Survival Period").
+
+2.2 Cap on Indemnity: Seller's aggregate indemnification obligations shall not exceed 10% of the Purchase Price ($3,000,000).
+
+2.3 Tax Representations: Seller represents and warrants that: (a) all material tax returns have been filed; (b) there are no pending tax audits, investigations, or disputes; and (c) all taxes have been paid in full.
+
+2.4 Carve-Out from Cap: The indemnity cap set forth in Section 2.2 shall not apply to any claims arising from Seller's breach of the tax representations contained in Section 2.3.
+
+**3. REPRESENTATIONS**
+
+3.1 Corporate Existence: Seller is a limited liability company duly organized and validly existing under the laws of the State of Delaware.
+
+**4. TERMINATION**
+
+4.1 Either party may terminate this Agreement if the other party breaches any material term and fails to cure such breach within 45 days after receiving written notice thereof.
+
+**5. GOVERNING LAW**
+
+5.1 This Agreement shall be governed by the laws of the State of New York.
+
+**6. MISCELLANEOUS**
+
+6.1 Integration: This Agreement, together with the schedules and exhibits attached hereto, constitutes the entire agreement between the parties.
+
+FOR BUYER: ________________________  FOR SELLER: ________________________
+Name: ________________________  Name: ________________________
+Title: ________________________  Title: ________________________
+Date: ________________________  Date: ________________________

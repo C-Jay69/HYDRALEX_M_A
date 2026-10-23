@@ -15,9 +15,17 @@ Compares multiple M&A transaction documents for consistency issues:
 
 from __future__ import annotations
 import re
+import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set
+
+# Knowledge graph integration for enhanced term tracking
+try:
+    from packages.python_engine.knowledge_graph import build_knowledge_graph_from_text, EntityType, RelationshipType
+    KNOWLEDGE_GRAPH_AVAILABLE = True
+except ImportError:
+    KNOWLEDGE_GRAPH_AVAILABLE = False
 
 
 class ConsistencyIssueType(Enum):
@@ -192,33 +200,91 @@ class CrossDocumentConsistencyEngine:
         findings = []
         all_terms: Dict[str, Dict[str, str]] = {}
 
-        # Collect all terms from all documents
+        # Collect all terms from all documents' knowledge graphs
+        kg_terms: Dict[str, Dict[str, set]] = {}  # doc -> {term -> {entity_types, relationships}}
+
         for doc_name, meta in self.documents.items():
+            # Build knowledge graph for this document
+            if KNOWLEDGE_GRAPH_AVAILABLE:
+                try:
+                    kg = build_knowledge_graph_from_text(meta.text, doc_name)
+                    kg_terms[doc_name] = {}
+                    for term_node in kg.search_by_entity_type(EntityType.DEFINED_TERM):
+                        term_name = term_node.name
+                        if term_name not in kg_terms[doc_name]:
+                            kg_terms[doc_name][term_name] = set()
+                        # Collect entity types and relationships involving this term
+                        # Find edges where this term is source or target
+                        for edge in kg.get_outgoing(term_node.id):
+                            kg_terms[doc_name][term_name].add(edge.relationship.value)
+                        for edge in kg.get_incoming(term_node.id):
+                            kg_terms[doc_name][term_name].add(edge.relationship.value)
+                except Exception:
+                    kg_terms[doc_name] = {}
+
+            # Also collect from DocumentMetadata's extracted terms
             for term, definition in meta.defined_terms.items():
                 if term not in all_terms:
                     all_terms[term] = {}
                 all_terms[term][doc_name] = definition
 
+            # Merge knowledge graph terms into all_terms
+            if doc_name in kg_terms:
+                for term, graph_data in kg_terms[doc_name].items():
+                    if term not in all_terms:
+                        all_terms[term] = {}
+                    all_terms[term][doc_name] = f"KG-extracted: {term} (related via {', '.join(graph_data)})"
+
         # Find terms defined differently across docs
         for term, definitions in all_terms.items():
             if len(definitions) > 1:
-                # Normalize and compare
-                normalized = {}
-                for doc, defn in definitions.items():
-                    norm = re.sub(r'\s+', ' ', defn.lower().strip())
-                    normalized[norm] = normalized.get(norm, []) + [doc]
+                doc_list = list(definitions.keys())
+                # Use the first doc as primary evidence
+                first_doc = doc_list[0]
+                other_docs = doc_list[1:]
 
-                if len(normalized) > 1:
-                    doc_list = list(definitions.keys())
-                    findings.append(ConsistencyFinding(
-                        issue_type=ConsistencyIssueType.DEFINED_TERM_MISMATCH,
-                        severity=Severity.HIGH,
-                        document_a=doc_list[0],
-                        document_b=doc_list[1] if len(doc_list) > 1 else None,
-                        description=f"Term '{term}' is defined differently across documents: {', '.join(doc_list)}",
-                        evidence_a="\n".join([f"{doc}: {defn[:100]}" for doc, defn in definitions.items()]),
-                        suggested_fix=f"Align the definition of '{term}' across all documents or use a Master Definitions section."
-                    ))
+                # Check if this is a knowledge graph extracted term
+                is_kg_term = any(f"KG-extracted:" in definitions.get(d, "") for d in doc_list)
+
+                if is_kg_term:
+                    # For KG-extracted terms, compare the full graph data
+                    # rather than just definitions
+                    norm_defs = {}
+                    for doc, defn in definitions.items():
+                        # Extract the part after "KG-extracted:"
+                        if "KG-extracted:" in defn:
+                            actual_term = defn.split("KG-extracted: ")[1].split(" (related")[0]
+                            if actual_term not in norm_defs:
+                                norm_defs[actual_term] = []
+                            norm_defs[actual_term].append(doc)
+
+                    if len(norm_defs) > 1:
+                        findings.append(ConsistencyFinding(
+                            issue_type=ConsistencyIssueType.DEFINED_TERM_MISMATCH,
+                            severity=Severity.HIGH,
+                            document_a=doc_list[0],
+                            document_b=doc_list[1] if len(doc_list) > 1 else None,
+                            description=f"Knowledge graph detected term '{term}' defined with different relationships across documents",
+                            evidence_a="\n".join([f"{doc}: KG-extracted term with different relationship patterns" for doc in doc_list]),
+                            suggested_fix=f"Align the definition and relationship patterns for '{term}' across all documents or ensure consistent usage."
+                        ))
+                else:
+                    # Normalize and compare
+                    normalized = {}
+                    for doc, defn in definitions.items():
+                        norm = re.sub(r'\s+', ' ', defn.lower().strip())
+                        normalized[norm] = normalized.get(norm, []) + [doc]
+
+                    if len(normalized) > 1:
+                        findings.append(ConsistencyFinding(
+                            issue_type=ConsistencyIssueType.DEFINED_TERM_MISMATCH,
+                            severity=Severity.HIGH,
+                            document_a=doc_list[0],
+                            document_b=doc_list[1] if len(doc_list) > 1 else None,
+                            description=f"Term '{term}' is defined differently across documents: {', '.join(doc_list)}",
+                            evidence_a="\n".join([f"{doc}: {defn[:100]}" for doc, defn in definitions.items()]),
+                            suggested_fix=f"Align the definition of '{term}' across all documents or use a Master Definitions section."
+                        ))
         return findings
 
     def _check_cross_references(self) -> List[ConsistencyFinding]:

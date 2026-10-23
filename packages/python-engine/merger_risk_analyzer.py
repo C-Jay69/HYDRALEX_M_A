@@ -282,81 +282,145 @@ class MergerRiskAnalyzer:
                 ))
 
         # ── Survival period (days) ─────────────────────────────────────────
-        # FIXED: Improved survival period parsing and tax rep survival checking
+        # Improved survival period parsing with proper tax/fundamental distinction
         # Look for survival periods more comprehensively
         surv_pattern = r"survival(?: period)?\s+(?:of\s+)?(?:[a-z]+\s*)?(\d+)\s*(?:days|months|years|mo|yr)"
         surv_matches = re.finditer(surv_pattern, text, re.IGNORECASE)
 
         # Check for specific tax rep survival language
-        tax_survival_pattern = r"(?:tax|income tax|transfer tax|estate tax).*survive.*(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:days|months|years)"
+        # Pattern: "tax survive X days" or "tax representations survive X years"
+        tax_survival_pattern = r"(?:tax|income tax|transfer tax|estate tax)\s+representations?\.?\s+shall\s+survive.*(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:days|months|years)"
         tax_survival_match = re.search(tax_survival_pattern, text, re.IGNORECASE)
 
-        # Check for general survival language
-        general_survival_pattern = r"(?:representations|warranties|reps).*survive.*(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:days|months|years)"
+        # Alternative tax survival: "tax survive X days"
+        tax_survival_alt_pattern = r"tax.*survive.*(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:days|months|years)"
+        tax_survival_alt_match = re.search(tax_survival_alt_pattern, text, re.IGNORECASE)
+
+        # Check for general survival language (non-specific reps)
+        general_survival_pattern = r"(?:representations|warranties)\s+shall\s+survive.*(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:days|months|years)"
         general_survival_match = re.search(general_survival_pattern, text, re.IGNORECASE)
 
         # Check for "Specified Representations" survival language (key distinction)
-        specified_reps_pattern = r"(?:Specified Representations|Fundamental Representations).*survive"
+        specified_reps_pattern = r"(?:Specified Representations|Fundamental Representations)\s+shall\s+survive"
         specified_reps_match = re.search(specified_reps_pattern, text, re.IGNORECASE)
 
-        # Check for survival definitions
-        survival_def_pattern = r"survival.*means.*(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:days|months|years)"
+        # Check for fundamental reps survival (they should survive indefinitely)
+        fundamental_pattern = r"(?:fundamental|material|essential)\s+representations?\s+shall\s+survive"
+        fundamental_match = re.search(fundamental_pattern, text, re.IGNORECASE)
+
+        # Check for survival definitions/constructions
+        survival_def_pattern = r"survival(?: period)?.{0,200}means.{0,200}(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:days|months|years)"
         survival_def_match = re.search(survival_def_pattern, text, re.IGNORECASE)
 
-        # Check for specific survival periods
-        days = None
+        # Parse all survival period durations found in the document
+        all_survival_days = []  # List of (raw_days, duration_text, duration_type)
         for match in surv_matches:
             potential_days = match.group(1)
+            duration_text = match.group(0)
             try:
                 parsed_days = int(potential_days)
-                # If we find a meaningful survival period, use it
                 if parsed_days > 0:
-                    days = parsed_days
-                    # Convert months to days for comparison if needed
-                    if 'month' in match.group(0).lower() or 'mo' in match.group(0).lower():
-                        days = parsed_days * 30
-                    break
+                    # Determine duration type from context
+                    duration_type = "general"
+                    text_before = text[max(0, match.start() - 100):match.start()].lower()
+                    if 'tax' in text_before:
+                        duration_type = "tax"
+                    elif 'fundamental' in text_before or 'material' in text_before:
+                        duration_type = "fundamental"
+                    all_survival_days.append((parsed_days, duration_text, duration_type))
             except ValueError:
                 continue
 
-        # Check for tax rep survival specifically
-        if tax_survival_match:
-            # Extract tax survival duration
-            tax_survival_duration = re.search(r'(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:days|months|years)', tax_survival_match.group(0), re.IGNORECASE)
-            if tax_survival_duration:
-                tax_days = self._parse_duration(tax_survival_duration.group(0))
-                if tax_days is not None and tax_days < 365:  # Tax reps should survive longer than 1 year
+        # Determine the effective survival period based on taxonomy
+        # Priority: fundamental > tax > general
+        effective_days = None
+        effective_type = "general"
+        tax_days_from_text = None
+        fundamental_match_found = False
+
+        for days, dur_text, dur_type in all_survival_days:
+            if dur_type == "fundamental":
+                fundamental_match_found = True
+                # Fundamental reps should survive indefinitely - any finite period is too short
+                if effective_days is None or effective_type != "fundamental":
+                    effective_days = days
+                    effective_type = "fundamental"
+            elif dur_type == "tax":
+                tax_days_from_text = days
+                # Tax reps should survive SOL + 60 days; if we only have days from text,
+                # flag if < 365 (basic check; full SOL calc needs more context)
+                if effective_days is None:
+                    effective_days = days
+                    effective_type = "tax"
+            else:
+                # General reps
+                if effective_days is None:
+                    effective_days = days
+                    effective_type = "general"
+
+        # Also check for explicit "indefinite" survival language
+        indefinite_pattern = r"(?:fundamental|material|essential).{0,50}rep.{0,50}survive.{0,20}indeterminant|indefinite|perpetual|unlimited"
+        indefinite_match = re.search(indefinite_pattern, text, re.IGNORECASE)
+
+        # ── Tax rep survival check ────────────────────────────────────────
+        # Only flag if we have tax survival language AND it's too short
+        tax_flagged = False
+        if tax_survival_match or tax_survival_alt_match:
+            # Extract the actual duration mentioned
+            tax_dur_match = re.search(
+                r'(?:tax|income tax|transfer tax|estate tax).{0,50}(?:survive|shall\s+survive).{0,50}(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:days|months|years)',
+                text, re.IGNORECASE
+            )
+            if tax_dur_match:
+                tax_days = self._parse_duration(tax_dur_match.group(0))
+                if tax_days is not None:
+                    # Tax reps should survive statute of limitations + 60 days or more
+                    # Flag if less than 365 days as a baseline check
+                    if tax_days < 365 and not tax_flagged:
+                        tax_flagged = True
+                        findings.append(RiskFinding(
+                            rule="survival_period_too_short",
+                            deduction=ded['survival_too_short']['deduction'],
+                            description=(
+                                f"Tax indemnity survival only {tax_days} days — below market standard "
+                                "for tax reps (should be statute of limitations + 60 days or more)"
+                            ),
+                            severity=ded['survival_too_short']['severity'],
+                            suggestion="Extend tax rep survival to statute of limitations + 60 days or more"
+                        ))
+
+        # ── General survival period check ─────────────────────────────────
+        # Flag general survival periods that are too short, but only if not
+        # already captured as tax or fundamental
+        if effective_days is not None and effective_type == "general" and not tax_flagged:
+            if effective_days < 365:
+                # Check if fundamental reps survive indefinitely (which would make
+                # this general period the only finite one, suggesting it's intentional)
+                if not fundamental_match_found:
                     findings.append(RiskFinding(
                         rule="survival_period_too_short",
                         deduction=ded['survival_too_short']['deduction'],
                         description=(
-                            f"Tax indemnity survival only {tax_days} days — below market standard "
-                            "for tax reps (should be statute of limitations + 60 days or more)"
-                        ),
-                        severity=ded['survival_too_short']['severity'],
-                        suggestion="Extend tax rep survival to statute of limitations + 60 days or more"
-                    ))
-
-        # Check for fundamental reps survival (they should survive indefinitely)
-        fundamental_pattern = r"(?:fundamental|material|essential).*rep.*survive"
-        fundamental_match = re.search(fundamental_pattern, text, re.IGNORECASE)
-
-        if days is not None and days < 365:
-            # Additional context: if it's about general reps, check if it's the right duration
-            if not tax_survival_match and not fundamental_match:
-                # This is a general survival period - check if it's too short
-                # But we also need to check if it refers to specific reps like "Specified Representations"
-                if not specified_reps_match:
-                    findings.append(RiskFinding(
-                        rule="survival_period_too_short",
-                        deduction=ded['survival_too_short']['deduction'],
-                        description=(
-                            f"Indemnity survival only {days} days — below market 12-24 months general; "
+                            f"Indemnity survival only {effective_days} days — below market 12-24 months general; "
                             "fundamental reps should survive indefinitely and tax to SOL+60 days"
                         ),
                         severity=ded['survival_too_short']['severity'],
                         suggestion="General 18-24 months; fundamental indefinite; tax to statute of limitations + 60 days"
                     ))
+
+        # ── Fundamental reps survival check ───────────────────────────────
+        # If fundamental reps have a finite survival period, flag it
+        if fundamental_match_found and effective_days is not None and effective_type == "fundamental":
+            findings.append(RiskFinding(
+                rule="survival_period_too_short",
+                deduction=ded['survival_too_short']['deduction'],
+                description=(
+                    f"Fundamental representations have only {effective_days} days survival — "
+                    "fundamental reps should survive indefinitely (not limited to a finite period)"
+                ),
+                severity=ded['survival_too_short']['severity'],
+                suggestion="Carve fundamental reps out of the general cap and specify indefinite survival"
+            ))
 
         # ── Cap applied to fundamental AND tax (no carve-out) ──────────────
         if re.search(
@@ -398,25 +462,76 @@ class MergerRiskAnalyzer:
     def _check_earnout(self, text: str) -> List[RiskFinding]:
         findings = []
         deductions = self.config['deductions']['earnout']
-        
+
         # Check if earnout exists
         patterns = self.patterns.get('earnout', {}).get('present_patterns', [])
         has_earnout = any(p.search(text) for p in patterns)
-        
+
         if has_earnout:
             # Check for defined metrics
             metric_patterns = self.patterns.get('earnout', {}).get('metric_patterns', [])
             has_metrics = any(p.search(text) for p in metric_patterns)
-            
+
             if not has_metrics:
+                # Try to extract what the parties might be referring to
+                # Look for any financial metrics mentioned in the earnout context
+                mentioned_metrics = set()
+
+                # Check for common metrics patterns
+                for metric_name in ['Revenue', 'EBITDA', 'Gross Profit', 'Net Income', 'Cash Flow']:
+                    if re.search(r'\b' + re.escape(metric_name) + r'\b', text, re.IGNORECASE):
+                        mentioned_metrics.add(metric_name)
+
+                # Check for dollar-amount based metrics
+                dollar_metrics = re.findall(r'\$[\d,]+', text)
+                if dollar_metrics:
+                    mentioned_metrics.add(f"dollar-based target (${dollar_metrics[0]})")
+
+                # Check for percentage-based metrics
+                pct_metrics = re.findall(r'\d+\.?\d*%\s*(?:of|revenue|sales)', text, re.IGNORECASE)
+                if pct_metrics:
+                    mentioned_metrics.add(f"percentage-based target ({', '.join(pct_metrics[:2])})")
+
+                # Check for problematic metric definition language
+                problematic_language = []
+
+                # Check for "sole discretion" language that gives one party unchecked control
+                if re.search(r'sole\.?\s*discretion', text, re.IGNORECASE):
+                    problematic_language.append("sole discretion language giving one party unchecked control over metric calculation")
+
+                # Check for "non-recurring items" which can be used to manipulate earnout
+                if re.search(r'non.recurring.items', text, re.IGNORECASE):
+                    problematic_language.append("'non-recurring items' provision allowing subjective exclusion of earnings")
+
+                # Check for "synergies" deduction from earnout (common manipulation tactic)
+                if re.search(r'synergies', text, re.IGNORECASE):
+                    problematic_language.append("synergies deduction from earnout pool")
+
+                # Check for "adjusted EBITDA" or similar vague metric definitions
+                if re.search(r'adjusted\.?\s*EBITDA', text, re.IGNORECASE):
+                    problematic_language.append("'adjusted EBITDA' without clear definition of adjustments")
+
+                # Check for "target" that's determined by one party
+                if re.search(r'target.*determined\.?\s*by\s*buyer|buyer.*determine.*target', text, re.IGNORECASE):
+                    problematic_language.append("target earnout metric determined solely by Buyer")
+
+                metric_desc = ""
+                if mentioned_metrics:
+                    metric_desc = f"The earnout formula references metrics but does not define them clearly. " \
+                                  f"Metrics mentioned in document: {', '.join(mentioned_metrics)}. "
+
+                if problematic_language:
+                    metric_desc += f"Problematic metric definition language detected: {'. '.join(problematic_language)}. "
+
                 findings.append(RiskFinding(
                     rule="undefined_metrics",
                     deduction=deductions['undefined_metrics']['deduction'],
-                    description=deductions['undefined_metrics']['description'],
+                    description=(metric_desc + deductions['undefined_metrics']['description']),
                     severity=deductions['undefined_metrics']['severity'],
-                    suggestion="Define specific metrics: Revenue, EBITDA, Gross Profit, or Net Income targets"
+                    suggestion=(deductions['undefined_metrics']['suggestion'] +
+                               " Consider: Revenue, EBITDA, Gross Profit, or Net Income targets with objective measurement criteria; avoid sole discretion language over metric calculation")
                 ))
-            
+
             # Check for dispute resolution
             dispute_patterns = self.patterns.get('earnout', {}).get('dispute_patterns', [])
             has_dispute_resolution = any(p.search(text) for p in dispute_patterns)
@@ -428,7 +543,38 @@ class MergerRiskAnalyzer:
                     severity="medium",
                     suggestion="Add earnout dispute resolution (independent accountant or arbitration)"
                 ))
-        
+
+            # Check for earnout duration
+            earnout_dur_pattern = r"earnout.{0,100}(?:over|for|period).{0,50}(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:months|years|mo|yr)"
+            earnout_dur_match = re.search(earnout_dur_pattern, text, re.IGNORECASE)
+            if not earnout_dur_match:
+                findings.append(RiskFinding(
+                    rule="undefined_earnout_duration",
+                    deduction=deductions.get('undefined_earnout_duration', {}).get('deduction', 5),
+                    description="Earnout period not specified — unclear how long the earnout lasts",
+                    severity="medium",
+                    suggestion="Specify earnout duration (typically 2-5 years from closing)"
+                ))
+
+            # Check for earnout calculation methodology
+            calc_patterns = [
+                r"{(?:VWAP|volume.weighted.average.price)}",
+                r"20.day.*VWAP",
+                r"\.{0,20}calc(?:ulation)?.{0,20}",
+                r"based on.{0,50}(?:revenues?|earnings?|sales)",
+            ]
+            has_calc_method = any(re.search(p, text, re.IGNORECASE) for p in calc_patterns)
+            if not has_calc_method:
+                # Check if there's any description of how it's calculated
+                if not re.search(r'how.{0,30}determin|calc(?:ulation).{0,30}method', text, re.IGNORECASE):
+                    findings.append(RiskFinding(
+                        rule="undefined_earnout_calculation",
+                        deduction=deductions.get('undefined_earnout_calculation', {}).get('deduction', 8),
+                        description="Earnout calculation methodology not specified",
+                        severity="medium",
+                        suggestion="Define earnout calculation methodology (formula, measurement dates, adjustments)"
+                    ))
+
         return findings
     
     def _check_termination(self, text: str) -> List[RiskFinding]:

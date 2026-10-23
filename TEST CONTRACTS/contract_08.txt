@@ -1,0 +1,46 @@
+TEST CONTRACT 8: Earnout with Built-in Manipulation Trigger
+========================================================
+
+BETWEEN: Buyer Corp ("Buyer")
+AND: Seller LLC ("Seller")
+
+**1. PURCHASE PRICE AND CLOSING**
+
+1.1 Purchase Price: $20,000,000, payable as to $15,000,000 in cash at closing and $5,000,000 via earnout consideration over 3 years.
+
+**2. EARNOUT FORMULA**
+
+2.1 Earnout Calculation: The earnout shall be calculated based on the target company's "Adjusted EBITDA" for each of the three fiscal years following closing (the "Earnout Years").
+
+2.2 Definition of Adjusted EBITDA: "Adjusted EBITDA" shall mean EBITDA as normally calculated, further adjusted as follows:
+(a) Add back: Any "non-cash charges" as determined by Buyer's sole discretion;
+(b) Deduct: Any "synergies" realized by Buyer from the acquisition, as determined by Buyer's finance team;
+(c) Further adjust: For "non-recurring items" as determined by Buyer's CFO.
+
+2.3 Earnout Pool: The total earnout pool shall be $5,000,000, payable as follows:
+- Year 1: 40% of pool if Adjusted EBITDA ≥ Target, prorated below target
+- Year 2: 30% of pool if Adjusted EBITDA ≥ Target, prorated below target
+- Year 3: 30% of pool if Adjusted EBITDA ≥ Target, prorated below target
+
+2.4 Target Adjusted EBITDA: The target Adjusted EBITDA for each Earnout Year shall be agreed upon by the parties within 90 days of closing, provided that if the parties cannot agree, the target shall be deemed to be the historical Adjusted EBITDA of the target business for the most recent fiscal year, as determined by Buyer in its sole discretion.
+
+**3. REPRESENTATIONS**
+
+3.1 Corporate Existence: Seller is a limited liability company duly organized and validly existing under the laws of the State of Delaware.
+
+**4. TERMINATION**
+
+4.1 Either party may terminate this Agreement if the other party breaches any material term and fails to cure such breach within 30 days after receiving written notice thereof.
+
+**5. GOVERNING LAW**
+
+5.1 This Agreement shall be governed by the laws of the State of Delaware.
+
+**6. MISCELLANEOUS**
+
+6.1 Integration: This Agreement, together with the schedules and exhibits attached hereto, constitutes the entire agreement between the parties.
+
+FOR BUYER: ________________________  FOR SELLER: ________________________
+Name: ________________________  Name: ________________________
+Title: ________________________  Title: ________________________
+Date: ________________________  Date: ________________________

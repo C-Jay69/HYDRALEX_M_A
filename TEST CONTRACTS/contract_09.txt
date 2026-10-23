@@ -1,0 +1,38 @@
+TEST CONTRACT 9: Covenants with Ambiguous "Ordinary Course" Carve-Out
+================================================================
+
+BETWEEN: Buyer Corp ("Buyer")
+AND: Seller LLC ("Seller")
+
+**1. PURCHASE PRICE AND CLOSING**
+
+1.1 Purchase Price: $45,000,000 payable in cash at closing.
+
+**2. COVENANTS**
+
+2.1 Conduct of Business Between Signing and Closing: Between the date of this Agreement and the closing date, Seller shall conduct its business in the ordinary course consistent with past practice. Seller may take actions reasonably necessary to respond to business conditions without prior consent if delays would be commercially unreasonable.
+
+2.2 Ordinary Course Carve-Outs: The covenant in Section 2.1 shall not restrict Seller from: (a) entering into contracts with existing customers on terms no less favorable than those offered to new customers, (b) hiring new employees to replace those who have departed, (c) making routine capital expenditures consistent with prior years' budgets, and (d) making changes to pricing policies in response to market conditions.
+
+2.3 Restricted Actions Requiring Buyer Consent: Seller shall not, without the prior written consent of Buyer (which shall not be unreasonably withheld or delayed): (a) sell or dispose of any assets outside the ordinary course of business having an aggregate value in excess of $500,000 in any fiscal year, (b) enter into any material lease or lending agreement, (c) change the name of the business, or (d) approve any dividend or distribution of profits.
+
+**2. REPRESENTATIONS**
+
+3.1 Title: Seller has good and marketable title to all assets being acquired, free and clear of all liens, encumbrances, and adverse claims.
+
+**3. TERMINATION**
+
+3.1 Either party may terminate this Agreement if the other party breaches any material term and fails to cure such breach within 30 days after receiving written notice thereof.
+
+**4. GOVERNING LAW**
+
+4.1 This Agreement shall be governed by the laws of the State of New York.
+
+**5. MISCELLANEOUS**
+
+5.1 Integration: This Agreement, together with the schedules and exhibits attached hereto, constitutes the entire agreement between the parties.
+
+FOR BUYER: ________________________  FOR SELLER: ________________________
+Name: ________________________  Name: ________________________
+Title: ________________________  Title: ________________________
+Date: ________________________  Date: ________________________

@@ -1,0 +1,44 @@
+TEST CONTRACT 5: Working Capital Definition with "Unusual Items" Loophole
+========================================================================
+
+BETWEEN: Buyer Corp ("Buyer")
+AND: Seller LLC ("Seller")
+
+**1. PURCHASE PRICE AND CLOSING**
+
+1.1 Purchase Price: Subject to a working capital adjustment as set forth in Section 2.
+
+**2. WORKING CAPITAL**
+
+2.1 Definition of Working Capital: "Working Capital" shall mean Current Assets minus Current Liabilities, determined in accordance with GAAP, consistently applied.
+
+2.2 Current Assets: Shall include all cash, accounts receivable, inventory, and other assets expected to be converted to cash within 12 months, but shall specifically exclude "unusual and non-recurring items" as determined by Buyer's management.
+
+2.3 Current Liabilities: Shall include all accounts payable, accrued expenses, and other liabilities expected to be paid within 12 months.
+
+2.4 Working Capital Target: The target Working Capital shall be $5,000,000, as set forth in Schedule 2.4.
+
+2.5 Working Capital True-Up: Within 90 days following closing, the parties shall calculate the actual Working Capital as of the closing date. If the actual Working Capital differs from the target by more than $500,000, the Purchase Price shall be adjusted accordingly.
+
+2.6 "Unusual and Non-Recurring Items": For purposes of Section 2.2, "unusual and non-recurring items" shall mean any items that, in the reasonable judgment of Buyer's management, are not expected to recur in the ordinary course of business. Such determination shall be made by Buyer's CFO and shall be final and binding.
+
+**3. REPRESENTATIONS**
+
+3.1 Accuracy of Financials: The financial statements attached hereto fairly present, in all material respects, the financial condition of Seller as of the dates indicated therein.
+
+**4. TERMINATION**
+
+4.1 Buyer may terminate this Agreement if closing does not occur on or before June 30, 2025.
+
+**5. GOVERNING LAW**
+
+5.1 This Agreement shall be governed by the laws of the State of Delaware.
+
+**6. MISCELLANEOUS**
+
+6.1 Integration: This Agreement, together with the schedules and exhibits attached hereto, constitutes the entire agreement between the parties.
+
+FOR BUYER: ________________________  FOR SELLER: ________________________
+Name: ________________________  Name: ________________________
+Title: ________________________  Title: ________________________
+Date: ________________________  Date: ________________________

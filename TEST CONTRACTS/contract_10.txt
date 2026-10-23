@@ -1,0 +1,42 @@
+TEST CONTRACT 10: Complete Tax Silence with "No Disclaimer" Disclaimer
+================================================================
+
+BETWEEN: Buyer Corp ("Buyer")
+AND: Seller LLC ("Seller")
+
+**1. PURCHASE PRICE AND CLOSING**
+
+1.1 Purchase Price: $18,000,000 payable in cash at closing.
+
+**2. REPRESENTATIONS AND WARRANTIES**
+
+2.1 General Representations: Seller represents and warrants that: (a) it has the power and authority to enter into this Agreement; (2) the execution and delivery of this Agreement have been duly authorized; and (3) this Agreement constitutes a valid and binding obligation of Seller.
+
+2.2 Negative Tax Representations: Seller makes no representations or warranties regarding tax matters, and specifically disclaims any responsibility for tax liabilities of any kind, whether known or unknown, accrued or contingent. Seller acknowledges that the Buyer is responsible for conducting its own tax due diligence and relies on no tax representations made by Seller in connection with this transaction.
+
+2.3 Survival: Representations and warranties shall survive closing for 12 months.
+
+**3. INDEMNIFICATION**
+
+3.1 Indemnity Obligation: Seller shall indemnify Buyer against any and all losses arising out of Seller's breach of its representations, warranties, or covenants set forth in this Agreement.
+
+3.2 Cap: Seller's aggregate indemnification obligation shall not exceed 8% of the Purchase Price ($1,440,000).
+
+3.3 Basket: The first $500,000 of aggregate losses shall be borne by Buyer (the "basket"), and all losses in excess thereof shall be indemnifiable by Seller.
+
+**4. TERMINATION**
+
+4.1 Either party may terminate this Agreement if the other party breaches any material term and fails to cure such breach within 30 days after receiving written notice thereof.
+
+**5. GOVERNING LAW**
+
+5.1 This Agreement shall be governed by the laws of the State of Delaware.
+
+**6. MISCELLANEOUS**
+
+6.1 Integration: This Agreement, together with the schedules and exhibits attached hereto, constitutes the entire agreement between the parties. Seller specifically disclaims any representation or warranty not expressly set forth herein.
+
+FOR BUYER: ________________________  FOR SELLER: ________________________
+Name: ________________________  Name: ________________________
+Title: ________________________  Title: ________________________
+Date: ________________________  Date: ________________________

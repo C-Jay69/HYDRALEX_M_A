@@ -31,6 +31,9 @@ class EntityType(Enum):
     EXHIBIT = "exhibit"
     AMENDMENT = "amendment"
     DOCUMENT = "document"
+    FINANCIAL_TERM = "financial_term"
+    METRIC = "metric"
+    SURVIVAL_PERIOD = "survival_period"
 
 
 class RelationshipType(Enum):
@@ -55,6 +58,11 @@ class RelationshipType(Enum):
     DEPENDS_ON = "depends_on"
     MUTUAL = "mutual"
     UNILATERAL = "unilateral"
+    CALCULATES = "calculates"
+    MEASURED_BY = "measured_by"
+    SURVIVES = "survives"
+    EXCLUDES = "excludes"
+    INCLUDES = "includes"
 
 
 @dataclass
@@ -404,13 +412,302 @@ class KnowledgeGraph:
             "relationship_types": rel_counts,
             "circular_references": len(self.detect_circular_references()),
         }
+    def extract_clauses(self, text: str) -> Dict[str, list[dict]]:
+        """
+        Extract and categorize 12 core clause types from M&A contract text.
+        """
+        clauses: Dict[str, list[dict]] = {t: [] for t in [
+            'corporate_authority', 'reps_warranties', 'covenants',
+            'conditions_closing', 'mae', 'purchase_price',
+            'indemnification', 'termination', 'disclosure_letters',
+            'regulatory_approvals', 'boilerplate', 'definitions'
+        ]}
+        import re
+        # 1. Corporate Authority
+        for match in re.finditer(
+            r'(?:execution|authorization|power.*authority|signing).{0,300}', text, re.IGNORECASE
+        ):
+            clauses['corporate_authority'].append({
+                'clause_type': 'corporate_authority',
+                'text': match.group(0)[:200],
+                'section': 'unknown',
+                'confidence': 0.8,
+            })
+        # 2. Reps & Warranties
+        for match in re.finditer(
+            r'[Gg]eneral [Rr]epresentations|[Tt]ax [Rr]epresentations|[Ff]undamental [Rr]epresentations', text
+        ):
+            clauses['reps_warranties'].append({
+                'clause_type': 'reps_warranties',
+                'text': match.group(0)[:200],
+                'section': 'unknown',
+                'confidence': 0.9,
+            })
+        # 3. Covenants
+        for match in re.finditer(
+            r'Seller\s+shall [^\.]|Buyer\s+shall [^\.]{10,200}', text, re.IGNORECASE
+        ):
+            clauses['covenants'].append({
+                'clause_type': 'covenants',
+                'text': match.group(0)[:200],
+                'section': 'unknown',
+                'confidence': 0.85,
+            })
+        # 4. Conditions to Closing
+        for match in re.finditer(
+            r'condition.*clos|closing.*condition|subject.*clos|prerequisite.*clos', text, re.IGNORECASE
+        ):
+            clauses['conditions_closing'].append({
+                'clause_type': 'conditions_closing',
+                'text': match.group(0)[:200],
+                'section': 'unknown',
+                'confidence': 0.85,
+            })
+        # 5. MAE
+        for match in re.finditer(
+            r'[Mm]aterial [Aa]dverse [Ee]ffect|MAE.{0,100}', text
+        ):
+            clauses['mae'].append({
+                'clause_type': 'mae',
+                'text': match.group(0)[:200],
+                'section': 'unknown',
+                'confidence': 0.9,
+            })
+        # 6. Purchase Price
+        for match in re.finditer(
+            r'purchase price|working capital|adjustment.{0,100}', text, re.IGNORECASE
+        ):
+            clauses['purchase_price'].append({
+                'clause_type': 'purchase_price',
+                'text': match.group(0)[:200],
+                'section': 'unknown',
+                'confidence': 0.8,
+            })
+        # 7. Indemnification
+        for match in re.finditer(
+            r'indemnif|cap.{0,50}|basket.{0,50}|survival.{0,50}', text, re.IGNORECASE
+        ):
+            clauses['indemnification'].append({
+                'clause_type': 'indemnification',
+                'text': match.group(0)[:200],
+                'section': 'unknown',
+                'confidence': 0.85,
+            })
+        # 8. Termination
+        for match in re.finditer(
+            r'termination|outside date|drop.*dead', text, re.IGNORECASE
+        ):
+            clauses['termination'].append({
+                'clause_type': 'termination',
+                'text': match.group(0)[:200],
+                'section': 'unknown',
+                'confidence': 0.8,
+            })
+        # 9. Disclosure Letters
+        for match in re.finditer(
+            r'disclos|schedule.{0,100}|exhibit.{0,100}', text, re.IGNORECASE
+        ):
+            clauses['disclosure_letters'].append({
+                'clause_type': 'disclosure_letters',
+                'text': match.group(0)[:200],
+                'section': 'unknown',
+                'confidence': 0.75,
+            })
+        # 10. Regulatory Approvals
+        for match in re.finditer(
+            r'CFIUS|HSR|regulatory.*appr|consent|approval.{0,100}', text, re.IGNORECASE
+        ):
+            clauses['regulatory_approvals'].append({
+                'clause_type': 'regulatory_approvals',
+                'text': match.group(0)[:200],
+                'section': 'unknown',
+                'confidence': 0.8,
+            })
+        # 11. Boilerplate
+        for match in re.finditer(
+            r'integration|entire agreement|successors|assignment', text, re.IGNORECASE
+        ):
+            clauses['boilerplate'].append({
+                'clause_type': 'boilerplate',
+                'text': match.group(0)[:200],
+                'section': 'unknown',
+                'confidence': 0.8,
+            })
+        # 12. Definitions
+        for match in re.finditer(
+            r'(?:means|shall mean|is defined as).{0,300}', text, re.IGNORECASE
+        ):
+            clauses['definitions'].append({
+                'clause_type': 'definitions',
+                'text': match.group(0)[:200],
+                'section': 'unknown',
+                'confidence': 0.85,
+            })
+        # Deduplicate
+        for clause_type in clauses:
+            seen = set()
+            deduped = []
+            for c in clauses[clause_type]:
+                text_hash = hash(c['text'][:100]) if c['text'] else 0
+                if text_hash not in seen:
+                    seen.add(text_hash)
+                    deduped.append(c)
+            clauses[clause_type] = deduped[:5]
+        return clauses
+
+
+
+    def search_by_entity_type(self, entity_type: EntityType) -> list[KGNode]:
+        """Find all nodes of a given entity type."""
+        return [n for n in self.nodes.values() if n.entity_type == entity_type]
+
+    def find_shortest_path_between_nodes(self, start_id: str, end_id: str) -> list[dict] | None:
+        """Find shortest path between two nodes using BFS."""
+        if start_id not in self.nodes or end_id not in self.nodes:
+            return None
+        if start_id == end_id:
+            return [{"from": start_id, "to": end_id, "relationship": "same_node"}]
+
+        # BFS
+        queue: list[tuple[str, list[dict]]] = [(start_id, [])]
+        visited: set[str] = {start_id}
+
+        while queue:
+            current_id, path = queue.pop(0)
+            for edge in self._adjacency.get(current_id, []):
+                next_id = edge.target_id
+                new_path = path + [{"from": current_id, "to": next_id, "relationship": edge.relationship.value}]
+
+                if next_id == end_id:
+                    return path + new_path
+
+                if next_id not in visited:
+                    visited.add(next_id)
+                    queue.append((next_id, new_path))
+
+        return None
+
+    def get_related_entities(self, node_id: str, relationship_types: list[RelationshipType] | None = None) -> list[dict]:
+        """Get entities related to a given node, optionally filtered by relationship types."""
+        related: list[dict] = []
+        edges = self._adjacency.get(node_id, [])
+
+        for edge in edges:
+            if relationship_types is not None and edge.relationship not in relationship_types:
+                continue
+            target_node = self.nodes.get(edge.target_id)
+            if target_node:
+                related.append({
+                    "node_id": edge.target_id,
+                    "node_name": target_node.name,
+                    "entity_type": target_node.entity_type.value,
+                    "relationship": edge.relationship.value,
+                    "evidence": edge.evidence,
+                })
+
+        # Also check reverse adjacency (incoming edges)
+        reverse_edges = self._reverse_adjacency.get(node_id, [])
+        for edge in reverse_edges:
+            if relationship_types is not None and edge.relationship not in relationship_types:
+                continue
+            source_node = self.nodes.get(edge.source_id)
+            if source_node:
+                related.append({
+                    "node_id": edge.source_id,
+                    "node_name": source_node.name,
+                    "entity_type": source_node.entity_type.value,
+                    "relationship": edge.relationship.value,
+                    "evidence": edge.evidence,
+                })
+
+        return related
+
+    def export_subgraph(self, node_ids: list[str]) -> dict:
+        """Export a subgraph induced by the given node IDs."""
+        subgraph_nodes: dict[str, dict] = {}
+        subgraph_edges: list[dict] = []
+
+        # Export nodes
+        for node_id in node_ids:
+            if node_id in self.nodes:
+                node = self.nodes[node_id]
+                subgraph_nodes[node_id] = {
+                    "id": node.id,
+                    "name": node.name,
+                    "entity_type": node.entity_type.value,
+                    "content": node.content,
+                    "source_section": node.source_section,
+                    "source_document": node.source_document,
+                    "metadata": node.metadata,
+                }
+
+        # Export edges where both source and target are in the subgraph
+        edge_ids = set()
+        for node_id in node_ids:
+            for edge in self._adjacency.get(node_id, []):
+                if edge.target_id in node_ids:
+                    edge_key = (edge.source_id, edge.target_id, edge.relationship.value)
+                    edge_ids.add(edge_key)
+
+        for edge_key in edge_ids:
+            source_id, target_id, rel = edge_key
+            # Find the edge object
+            for edge in self.edges:
+                if edge.source_id == source_id and edge.target_id == target_id:
+                    subgraph_edges.append({
+                        "source": edge.source_id,
+                        "target": edge.target_id,
+                        "relationship": edge.relationship.value,
+                        "confidence": edge.confidence,
+                        "evidence": edge.evidence,
+                        "source_section": edge.source_section,
+                    })
+                    break
+
+        return {"nodes": subgraph_nodes, "edges": subgraph_edges}
+
+    def export_for_reporting(self, format: str = "dict") -> dict | str:
+        """Export the knowledge graph in a format suitable for reporting.
+
+        Args:
+            format: "dict" for dictionary format, "json" for JSON string,
+                    "summary" for a human-readable summary dict
+        """
+        if format == "dict":
+            return self.to_dict()
+        elif format == "json":
+            import json
+            return json.dumps(self.to_dict(), indent=2)
+        elif format == "summary":
+            summary = self.summary()
+            # Add entity-type breakdown and some relationship insights
+            type_counts: dict[str, int] = {}
+            rel_counts: dict[str, int] = {}
+            for node in self.nodes.values():
+                type_counts[node.entity_type.value] = type_counts.get(node.entity_type.value, 0) + 1
+            for edge in self.edges:
+                rel_counts[edge.relationship.value] = rel_counts.get(edge.relationship.value, 0) + 1
+
+            return {
+                "total_nodes": summary["total_nodes"],
+                "total_edges": summary["total_edges"],
+                "node_type_breakdown": type_counts,
+                "relationship_type_breakdown": rel_counts,
+                "circular_references": summary["circular_references"],
+                "nodes_by_type": {
+                    et: [{"id": n.id, "name": n.name, "content": n.content[:100], "source_section": n.source_section}
+                         for n in self.search_by_entity_type(EntityType(et))]
+                    for et in set(n.entity_type.value for n in self.nodes.values())
+                }
+            }
+        else:
+            raise ValueError(f"Unknown format: {format}. Choose from: dict, json, summary")
 
 
 # ── Factory ──────────────────────────────────────────────────
 
 DEFINED_TERM_PATTERNS = [
     r"['\"]?(\w[\w\s]{2,40})['\"]?\s*(?:means|defined as|is defined as|shall mean)\s",
-    r"\b([A-Z]{2,10})\b",
     r"(\w[\w\s]{1,30})\s*\(as\s*defined\s*in\s*(?:Section|§)\s*[\d.]+\)",
 ]
 
@@ -440,7 +737,7 @@ def build_knowledge_graph_from_text(text: str, document_name: str = "document") 
         source_document=document_name,
     ))
 
-    # Extract defined terms
+    # ── Extract defined terms ────────────────────────────────────
     seen_terms = set()
     for pattern in DEFINED_TERM_PATTERNS:
         for match in re.finditer(pattern, text, re.MULTILINE | re.DOTALL):
@@ -458,17 +755,14 @@ def build_knowledge_graph_from_text(text: str, document_name: str = "document") 
                     source_section=match.group(0)[:100],
                 ))
 
-    # Extract party names. Normalize so "BuyerCo Inc." / "the Target" collapse
-    # onto a single canonical node keyed to the defined short name (e.g. "Buyer").
+    # ── Extract party names ────────────────────────────────────────
     defined_shorts = set(re.findall(r'\(["\']?([A-Z][A-Za-z]+)["\']?\)', text))
     seen_party_ids = set()
     for pattern in PARTY_PATTERNS:
         for match in re.finditer(pattern, text):
             raw = match.group(0).strip()
             raw = re.sub(r'(?i)^the\s+', '', raw).strip()
-            # Strip entity suffixes (Inc., Co, Corp., LLC, Ltd.)
             base = re.sub(r'(?i)\s+(inc\.?|corp\.?|llc|ltd\.?|co)\b', '', raw).strip()
-            # If the base (minus trailing "Co") matches a defined short name, use it.
             canon = base
             if base.lower() in {d.lower() for d in defined_shorts}:
                 canon = next(d for d in defined_shorts if d.lower() == base.lower())
@@ -484,18 +778,211 @@ def build_knowledge_graph_from_text(text: str, document_name: str = "document") 
                     entity_type=EntityType.PARTY, source_document=document_name,
                 ))
 
-    # Extract regulatory references
-    for body in REGULATORY_BODIES:
-        if re.search(rf'\b{re.escape(body)}\b', text, re.IGNORECASE):
-            reg_id = f"reg:{body.lower()}"
-            if reg_id not in [n.id for n in kg.nodes.values()]:
+    # ── Extract representations (general, tax, fundamental) ───────
+    # Pattern: "General Representations:", "Tax Representations:", "Fundamental Representations"
+    rep_patterns = [
+        (r'\bGeneral\s+Representations\b', EntityType.REPRESENTATION, "general"),
+        (r'\bTax\s+Representations\b', EntityType.TAX, "tax"),
+        (r'\bFundamental\s+Representations\b', EntityType.REPRESENTATION, "fundamental"),
+    ]
+    for pattern, entity_type, label in rep_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            # Grab a broader context snippet as content
+            start = max(0, match.start())
+            end = min(len(text), match.end() + 200)
+            context = text[start:end].strip()
+            kg.add_node(KGNode(
+                id=f"rep:{label}:{document_name}",
+                name=f"{label.title()} Representations",
+                entity_type=entity_type,
+                content=context[:200],
+                source_document=document_name,
+                source_section=match.group(0),
+            ))
+
+    # ── Extract financial terms and metrics ────────────────────────
+    # Common financial metrics: EBITDA, Revenue, Gross Profit, Net Income, Cash Flow
+    financial_metrics = ['EBITDA', 'Revenue', 'Gross Profit', 'Net Income', 'Cash Flow', 'Working Capital']
+    for metric in financial_metrics:
+        # Look for metric definition: "Metric" shall mean ...
+        metric_pattern = rf'(?:"([^"]*{re.escape(metric)}[^"]*)"\s+(?:shall\s+mean|means)|{re.escape(metric)}\s+(?:shall\s+mean|means))'
+        for match in re.finditer(metric_pattern, text, re.IGNORECASE):
+            metric_name = match.group(1).strip() if match.lastindex else match.group(0).strip()
+            # Extract the definition that follows
+            definition_start = match.end()
+            definition_end = min(len(text), definition_start + 300)
+            definition = text[definition_start:definition_end].strip()
+            # Clean up the definition
+            definition = re.sub(r'\s+', ' ', definition).strip()[:200]
+
+            metric_id = f"metric:{metric.lower().replace(' ', '_')}"
+            kg.add_node(KGNode(
+                id=metric_id,
+                name=metric_name,
+                entity_type=EntityType.METRIC,
+                content=definition,
+                source_document=document_name,
+                source_section=match.group(0),
+            ))
+
+            # Link metric to relevant parties (typically Buyer/Seller)
+            for party_node_id in [n_id for n_id in kg.nodes if kg.nodes[n_id].entity_type == EntityType.PARTY]:
+                kg.add_edge(
+                    source_id=party_node_id,
+                    target_id=metric_id,
+                    relationship=RelationshipType.MEASURED_BY,
+                    evidence=f"Metric {metric_name} referenced in {document_name}",
+                    source_section=match.group(0),
+                )
+
+    # ── Extract survival periods ───────────────────────────────────
+    # Pattern: "survive X months/years" or "shall survive for X months/years"
+    surv_pattern = r'(?:representations?|warranties)\s+shall\s+survive\s+(?:for\s+)?(?:(\d+)\s*(?:days|months|years)|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:days|months|years)'
+    for match in re.finditer(surv_pattern, text, re.IGNORECASE):
+        days_str = match.group(1)
+        duration_text = match.group(0)
+        dur_type = "general"
+        # Get context before the match to determine type
+        text_before = text[max(0, match.start() - 150):match.start()].lower()
+        if 'tax' in text_before:
+            dur_type = "tax"
+        elif 'fundamental' in text_before or 'material' in text_before:
+            dur_type = "fundamental"
+
+        days = int(days_str) if days_str and days_str.isdigit() else None
+        if days is not None:
+            surv_id = f"surv:{dur_type}:{days}"
+            kg.add_node(KGNode(
+                id=surv_id,
+                name=f"{dur_type.title()} survival period: {days} days",
+                entity_type=EntityType.SURVIVAL_PERIOD,
+                content=duration_text,
+                source_document=document_name,
+                source_section=match.group(0),
+            ))
+
+            # Link to representations entity if found nearby
+            rep_search_start = max(0, match.start() - 100)
+            rep_search_end = min(len(text), match.end() + 100)
+            rep_context = text[rep_search_start:rep_search_end]
+            rep_match = re.search(r'[A-Z][a-zA-Z\s]{3,40}', rep_context)
+            if rep_match:
+                rep_name = rep_match.group(0).strip()
+                rep_term_id = f"term:{rep_name.lower().replace(' ', '_')}"
+                if rep_term_id in kg.nodes:
+                    kg.add_edge(
+                        source_id=rep_term_id,
+                        target_id=surv_id,
+                        relationship=RelationshipType.SURVIVES,
+                        evidence=f"{dur_type.title()} survival period for representations",
+                        source_section=match.group(0),
+                    )
+
+    # ── Extract covenants and conditions ───────────────────────────
+    # Pattern: "Seller shall not..." or "Seller shall..." covenants
+    covenant_patterns = [
+        (r'Seller\s+shall\s+not\s+([^\.]{10,200})', EntityType.CONDITION, "seller_restriction"),
+        (r'Buyer\s+shall\s+not\s+([^\.]{10,200})', EntityType.CONDITION, "buyer_restriction"),
+        (r'Seller\s+shall\s+([^\.]{10,200})', EntityType.OBLIGATION, "seller_obligation"),
+        (r'Buyer\s+shall\s+([^\.]{10,200})', EntityType.OBLIGATION, "buyer_obligation"),
+    ]
+    for pattern, entity_type, label in covenant_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            covenant_text = match.group(1).strip()
+            if not covenant_text:
+                continue
+            # Truncate to reasonable size
+            covenant_text = covenant_text[:200]
+            node_id = f"{label}:{entity_type.value}:{document_name}"
+            # Avoid duplicates
+            if node_id not in kg.nodes:
                 kg.add_node(KGNode(
-                    id=reg_id, name=body,
-                    entity_type=EntityType.REGULATORY_APPROVAL,
+                    id=node_id,
+                    name=f"{label} {entity_type.value}",
+                    entity_type=entity_type,
+                    content=covenant_text,
                     source_document=document_name,
+                    source_section=match.group(0)[:100],
                 ))
 
-    # Detect dead-definition false positives using actual document usage counts.
+    # ── Extract disclosure schedule references ─────────────────────
+    for match in re.finditer(r'[Ss]chedule\s+(\d+(?:\.\d+)*(?:\([a-zA-Z0-9]+\))?|[A-Z]+(?:-\d+)?)', text, re.IGNORECASE):
+        schedule_ref = match.group(1).strip()
+        kg.add_node(KGNode(
+            id=f"sch:{schedule_ref.lower().replace(' ', '_')}",
+            name=f"Schedule {schedule_ref}",
+            entity_type=EntityType.DISCLOSURE_SCHEDULE,
+            source_document=document_name,
+            source_section=match.group(0),
+        ))
+
+    # ── Add key relationships ────────────────────────────────────────
+    # 1. Defined terms referenced in the document
+    for term_node_id in [n_id for n_id in kg.nodes if kg.nodes[n_id].entity_type == EntityType.DEFINED_TERM]:
+        term_name = kg.nodes[term_node_id].name
+        # Look for references to this term in the text
+        term_ref_pattern = rf'\b{re.escape(term_name)}\b'
+        ref_count = len(re.findall(term_ref_pattern, text, re.IGNORECASE))
+        if ref_count > 1:  # Term is used more than just in its definition
+            # Find the first reference location
+            first_ref_match = re.search(term_ref_pattern, text)
+            if first_ref_match:
+                kg.add_edge(
+                    source_id=term_node_id,
+                    target_id=f"doc:{document_name}",
+                    relationship=RelationshipType.REFERENCES,
+                    evidence=f"Term '{term_name}' used {ref_count} times in document",
+                    source_section=first_ref_match.group(0)[:100],
+                )
+
+    # 2. Parties to representations
+    for party_node_id in [n_id for n_id in kg.nodes if kg.nodes[n_id].entity_type == EntityType.PARTY]:
+        party_name = kg.nodes[party_node_id].name
+        # Check if party is associated with representations
+        rep_context_pattern = rf'{party_name}.{{0,200}}representations|representations.{0,200}{party_name}'
+        if re.search(rep_context_pattern, text, re.IGNORECASE):
+            # Only add edge if representation node exists
+            rep_node_id = f"rep:general:{document_name}"
+            if rep_node_id in kg.nodes:
+                kg.add_edge(
+                    source_id=party_node_id,
+                    target_id=rep_node_id,
+                    relationship=RelationshipType.REPS_BY,
+                    evidence=f"Party {party_name} provides representations",
+                    source_section="contextual",
+                )
+
+    # 3. Metrics calculated by parties
+    for metric_node_id in [n_id for n_id in kg.nodes if kg.nodes[n_id].entity_type == EntityType.METRIC]:
+        metric_name = kg.nodes[metric_node_id].name
+        # Check which party's CFO/determination is mentioned
+        for party_node_id in [n_id for n_id in kg.nodes if kg.nodes[n_id].entity_type == EntityType.PARTY]:
+            party_name = kg.nodes[party_node_id].name
+            # Check if party's CFO or team determines the metric
+            cfo_pattern = rf'{party_name}.{{0,100}}CFO|CFO.{0,100}{party_name}'
+            if re.search(cfo_pattern, text, re.IGNORECASE):
+                kg.add_edge(
+                    source_id=metric_node_id,
+                    target_id=party_node_id,
+                    relationship=RelationshipType.CALCULATES,
+                    evidence=f"{metric_name} calculated by {party_name}'s CFO",
+                    source_section="contextual",
+                )
+
+    # 4. Fundamental reps survival → indefinite
+    for surv_node_id in [n_id for n_id in kg.nodes if kg.nodes[n_id].entity_type == EntityType.SURVIVAL_PERIOD]:
+        surv_name = kg.nodes[surv_node_id].name.lower()
+        if 'fundamental' in surv_name:
+            # Flag that fundamental reps should survive indefinitely
+            kg.add_edge(
+                source_id=surv_node_id,
+                target_id=f"doc:{document_name}",
+                relationship=RelationshipType.SURVIVES,
+                evidence="Fundamental representations survival period",
+                source_section="taxonomy",
+            )
+
+    # ── Detect dead-definition false positives ─────────────────────
     kg.dead_definition_findings = kg.detect_missing_links(text)
 
     return kg

@@ -1,0 +1,44 @@
+TEST CONTRACT 2: Indemnity Cap with Creditable Break-up Fee
+========================================================
+
+BETWEEN: Buyer Corp ("Buyer")
+AND: Seller LLC ("Seller")
+
+**1. PURCHASE PRICE AND CLOSING**
+
+1.1 Purchase Price: $50,000,000, payable as to $30,000,000 in cash at closing and $20,000,000 via promissory note due on the third anniversary of closing, bearing interest at 5% per annum.
+
+1.2 Break-up Fee: If Seller terminates this Agreement to accept a superior proposal, Seller shall pay Buyer a break-up fee of $3,000,000. If Buyer terminates due to failure to obtain financing, Buyer shall pay Seller a break-up fee of $2,500,000.
+
+**2. INDEMNIFICATION**
+
+2.1 Indemnity Obligation: Seller shall indemnify Buyer against any and all losses, liabilities, damages, and expenses arising out of or relating to any breach of Seller's representations, warranties, or covenants contained herein.
+
+2.2 Indemnity Cap: Seller's aggregate indemnification obligations shall not exceed the sum of (a) 15% of the Purchase Price ($7,500,000) and (b) the Break-up Fee paid by Seller to Buyer under Section 1.2.
+
+2.3 Basket: The first $1,000,000 of aggregate losses shall be borne by Buyer (the "basket"), and all losses in excess thereof shall be indemnifiable by Seller.
+
+2.4 Credity Against Cap: The Break-up Fee paid by Seller to Buyer under Section 1.2 shall be creditable against the Indemnity Cap set forth in Section 2.2, provided that the aggregate amount creditable shall not exceed the Break-up Fee amount actually paid.
+
+2.5 Survival: Representations and warranties shall survive closing for 24 months.
+
+**3. REPRESENTATIONS**
+
+3.1 Financial Statements: Seller represents that the financial statements attached hereto fairly present, in all material respects, the financial condition of Seller as of the date of the financial statements.
+
+**4. TERMINATION**
+
+4.1 Buyer may terminate this Agreement if closing does not occur on or before March 31, 2025, unless the failure to close is due to Buyer's breach.
+
+**5. GOVERNING LAW**
+
+5.1 This Agreement shall be governed by the laws of the State of New York.
+
+**6. MISCELLANEOUS**
+
+6.1 Integration: This Agreement, together with the schedules and exhibits attached hereto, constitutes the entire agreement between the parties between Buyer and Seller relating to the subject matter hereof, and supersedes all prior and contemporaneous agreements, understandings, negotiations, and discussions, whether oral or written, between Buyer and Seller relating to the subject matter hereof.
+
+FOR BUYER: ________________________  FOR SELLER: ________________________
+Name: ________________________  Name: ________________________
+Title: ________________________  Title: ________________________
+Date: ________________________  Date: ________________________

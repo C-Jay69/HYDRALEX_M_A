@@ -1,0 +1,38 @@
+TEST CONTRACT 3: Non-Compete with Broad Carve-Outs
+=================================================
+
+BETWEEN: Buyer Corp ("Buyer")
+AND: Seller LLC ("Seller")
+
+**1. PURCHASE PRICE AND CLOSING**
+
+1.1 Purchase Price: $40,000,000 payable in cash at closing.
+
+**2. COVENANTS**
+
+2.1 Non-Compete: For a period of 36 months following closing, Seller shall not, directly or indirectly, (a) engage in the business of providing cloud-based software solutions, (b) invest in any company that engages in such business, or (c) provide consulting services to any competitor of Buyer's cloud software business.
+
+2.2 Carve-Outs: The non-compete covenant in Section 2.1 shall not apply to: (a) Seller's passive investment of up to 10% of the outstanding equity of any publicly traded company, (b) Seller's role as an officer or director of any company that is not a competitor of Buyer, (c) Seller's provision of consulting services to existing clients of Seller prior to closing, provided such services do not relate to cloud-based software, and (d) Seller's employment by any entity if such employment does not involve the direct use of the proprietary technology being acquired.
+
+2.3 Key Employee Retention: For 12 months following closing, Buyer shall not terminate without cause any of the key employees identified on Schedule 2.3, and Seller shall use commercially reasonable efforts to cause such key employees to remain employed by Buyer for such period.
+
+**2. REPRESENTATIONS**
+
+3.1 Standing: Seller has full power and authority to enter into this Agreement and to consumlate the transactions contemplated herein.
+
+**4. TERMINATION**
+
+4.1 Either party may terminate this Agreement if the other party breaches any material term and fails to cure such breach within 30 days after receiving written notice thereof.
+
+**5. GOVERNING LAW**
+
+5.1 This Agreement shall be governed by the laws of the State of California, without regard to conflicts of law principles.
+
+**6. MISCELLANEOUS**
+
+6.1 Severability: If any provision of this Agreement is held to be invalid, illegal, or unenforceable, the remaining provisions shall continue in full force and effect.
+
+FOR BUYER: ________________________  FOR SELLER: ________________________
+Name: ________________________  Name: ________________________
+Title: ________________________  Title: ________________________
+Date: ________________________  Date: ________________________

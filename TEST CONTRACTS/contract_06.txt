@@ -1,0 +1,42 @@
+TEST CONTRACT 6: Dispute Resolution with Escalation Timeline Loophole
+====================================================================
+
+BETWEEN: Buyer Corp ("Buyer")
+AND: Seller LLC ("Seller")
+
+**1. PURCHASE PRICE AND CLOSING**
+
+1.1 Purchase Price: $25,000,000 payable in cash at closing.
+
+**2. INDEMNIFICATION**
+
+2.1 Indemnity Obligations: Seller shall indemnify Buyer for any breaches of representations, warranties, or covenants.
+
+2.2 Notice of Claim: The Buyer must notify Seller of any claim under this Section 2 within 12 months following the first anniversary of the closing date (the "Claim Notice Period"). Any claim not notified within the Claim Notice Period shall be forever barred.
+
+2.3 Response Period: Upon receipt of a notice of claim, Seller shall have 45 days to respond with a proposed resolution.
+
+2.4 Escalation to Mediation: If the parties cannot resolve the claim within 30 days after Seller's response, either party may initiate binding mediation. Mediation shall be held in the city where Seller's headquarters are located, before a mediator selected by the American Arbitration Association, and shall commence no later than 60 days after the escalation request.
+
+2.5 Final and Binding Arbitration: If mediation is unsuccessful, either party may initiate binding arbitration under the rules of JAMS. The arbitration shall be conducted in [his/her] home city, and the arbitrator's decision shall be final and binding.
+
+**3. REPRESENTATIONS**
+
+3.1 Authority: Each party represents that it has full power and authority to enter into this Agreement.
+
+**4. TERMINATION**
+
+4.1 Either party may terminate this Agreement if the other party breaches any material term and fails to cure such breach within 30 days after receiving written notice thereof.
+
+**5. GOVERNING LAW**
+
+5.1 This Agreement shall be governed by the laws of the State of New York.
+
+**6. MISCELLANEOUS**
+
+6.1 Integration: This Agreement, together with the schedules and exhibits attached hereto, constitutes the entire agreement between the parties.
+
+FOR BUYER: ________________________  FOR SELLER: ________________________
+Name: ________________________  Name: ________________________
+Title: ________________________  Title: ________________________
+Date: ________________________  Date: ________________________
